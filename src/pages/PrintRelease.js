@@ -8,8 +8,7 @@ import {
   FaQrcode, 
   FaKey, 
   FaPrint,
-  FaEye,
-  FaDownload
+  FaEye
 } from 'react-icons/fa';
 import { useParams, useLocation } from 'react-router-dom';
 
