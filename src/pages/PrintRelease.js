@@ -418,12 +418,14 @@ const PrintRelease = () => {
         }
       };
 
-      const isPdf = (mimeType || '').includes('pdf');
-      const isImage = (mimeType || '').startsWith('image/');
-      const isText = (mimeType || '').includes('text/') || (mimeType || '') === 'text/plain';
-      const isWord = /msword|wordprocessingml/.test(mimeType || '');
-      const isExcel = /excel|spreadsheetml/.test(mimeType || '');
-      const isPowerPoint = /powerpoint|presentationml/.test(mimeType || '');
+      const fileName = (job.document?.name || '').toLowerCase();
+      // Check both MIME type and file extension for better detection
+      const isPdf = (mimeType || '').includes('pdf') || fileName.endsWith('.pdf');
+      const isImage = (mimeType || '').startsWith('image/') || /\.(jpg|jpeg|png|gif|bmp|webp|svg)$/.test(fileName);
+      const isText = (mimeType || '').includes('text/') || (mimeType || '') === 'text/plain' || /\.(txt|csv)$/.test(fileName);
+      const isWord = /msword|wordprocessingml/.test(mimeType || '') || /\.(doc|docx)$/.test(fileName);
+      const isExcel = /excel|spreadsheetml/.test(mimeType || '') || /\.(xls|xlsx)$/.test(fileName);
+      const isPowerPoint = /powerpoint|presentationml/.test(mimeType || '') || /\.(ppt|pptx)$/.test(fileName);
       const isOffice = isWord || isExcel || isPowerPoint || /officedocument/.test(mimeType || '');
 
       if (isPdf) {
@@ -950,7 +952,7 @@ const PrintRelease = () => {
                           </div>
                         </div>
                         <div className="job-actions">
-                          {job.document?.dataUrl && (
+                          {job.document?.dataUrl ? (
                             <>
                               <ActionButton 
                                 className="secondary"
@@ -971,6 +973,10 @@ const PrintRelease = () => {
                                 Print
                               </ActionButton>
                             </>
+                          ) : (
+                            <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', marginRight: '8px' }}>
+                              No preview
+                            </div>
                           )}
                           <ActionButton 
                             className="primary"

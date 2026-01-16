@@ -67,7 +67,33 @@ export const PrintJobProvider = ({ children }) => {
 
   // Save print jobs to localStorage whenever they change
   useEffect(() => {
-    localStorage.setItem('securePrintJobs', JSON.stringify(printJobs));
+    try {
+      const jobsJson = JSON.stringify(printJobs);
+      // Check localStorage size limit (typically 5-10MB)
+      const sizeInMB = new Blob([jobsJson]).size / (1024 * 1024);
+      if (sizeInMB > 5) {
+        console.warn(`Warning: Print jobs data is large (${sizeInMB.toFixed(2)}MB). Large documents may cause issues.`);
+      }
+      localStorage.setItem('securePrintJobs', jobsJson);
+      console.log('Print jobs saved to localStorage:', printJobs.length, 'jobs');
+    } catch (error) {
+      if (error.name === 'QuotaExceededError') {
+        console.error('localStorage quota exceeded. Document may be too large. Consider using server storage.');
+        // Keep jobs without document data for smaller storage
+        const jobsWithoutDocs = printJobs.map(job => ({
+          ...job,
+          document: null // Remove document data to save space
+        }));
+        try {
+          localStorage.setItem('securePrintJobs', JSON.stringify(jobsWithoutDocs));
+          console.warn('Saved jobs without document data due to storage limit');
+        } catch (e) {
+          console.error('Failed to save even without document data:', e);
+        }
+      } else {
+        console.error('Error saving print jobs to localStorage:', error);
+      }
+    }
   }, [printJobs]);
 
   const submitPrintJob = async (jobData) => {
@@ -86,12 +112,53 @@ export const PrintJobProvider = ({ children }) => {
       let documentMimeType = null;
       let documentFileName = null;
       if (jobData.file instanceof File) {
-        documentMimeType = jobData.file.type || 'application/octet-stream';
         documentFileName = jobData.file.name || 'document';
+        // Detect MIME type from file extension if browser doesn't provide it correctly
+        const fileName = documentFileName.toLowerCase();
+        if (!jobData.file.type || jobData.file.type === 'application/octet-stream') {
+          // Infer MIME type from file extension
+          if (fileName.endsWith('.pdf')) {
+            documentMimeType = 'application/pdf';
+          } else if (fileName.endsWith('.doc')) {
+            documentMimeType = 'application/msword';
+          } else if (fileName.endsWith('.docx')) {
+            documentMimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          } else if (fileName.endsWith('.xls')) {
+            documentMimeType = 'application/vnd.ms-excel';
+          } else if (fileName.endsWith('.xlsx')) {
+            documentMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+          } else if (fileName.endsWith('.ppt')) {
+            documentMimeType = 'application/vnd.ms-powerpoint';
+          } else if (fileName.endsWith('.pptx')) {
+            documentMimeType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+          } else if (fileName.endsWith('.txt')) {
+            documentMimeType = 'text/plain';
+          } else if (fileName.endsWith('.csv')) {
+            documentMimeType = 'text/csv';
+          } else if (/\.(jpg|jpeg|png|gif|bmp|webp|svg)$/.test(fileName)) {
+            documentMimeType = jobData.file.type || 'image/jpeg';
+          } else {
+            documentMimeType = jobData.file.type || 'application/octet-stream';
+          }
+        } else {
+          documentMimeType = jobData.file.type;
+        }
+        
         documentDataUrl = await new Promise((resolve, reject) => {
           const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = reject;
+          reader.onload = () => {
+            console.log('File converted to data URL:', {
+              name: documentFileName,
+              mimeType: documentMimeType,
+              size: jobData.file.size,
+              dataUrlLength: reader.result?.length
+            });
+            resolve(reader.result);
+          };
+          reader.onerror = (error) => {
+            console.error('Error reading file:', error);
+            reject(error);
+          };
           reader.readAsDataURL(jobData.file);
         });
       }
