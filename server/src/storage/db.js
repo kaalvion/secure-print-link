@@ -49,7 +49,8 @@ export function createDb(dbPath) {
       printerId TEXT,
       releasedBy TEXT,
       secureToken TEXT,
-      releaseLink TEXT
+      releaseLink TEXT,
+      expiresAt TEXT
     );
   `);
 

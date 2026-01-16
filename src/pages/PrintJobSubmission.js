@@ -378,7 +378,8 @@ const PrintJobSubmission = () => {
     stapling: false,
     priority: 'normal',
     printerId: '',
-    notes: ''
+    notes: '',
+    expirationDuration: 15 // Default: 15 minutes
   });
   const [error, setError] = useState(null);
 
@@ -698,6 +699,23 @@ const PrintJobSubmission = () => {
                         <option value="urgent">Urgent</option>
                       </select>
                     </FormGroup>
+                    <FormGroup>
+                      <label>Link Expiration Duration</label>
+                      <select
+                        value={jobData.expirationDuration}
+                        onChange={(e) => setJobData(prev => ({ ...prev, expirationDuration: parseInt(e.target.value) }))}
+                        required
+                      >
+                        <option value={5}>5 minutes</option>
+                        <option value={10}>10 minutes</option>
+                        <option value={15}>15 minutes</option>
+                        <option value={30}>30 minutes</option>
+                        <option value={60}>1 hour</option>
+                      </select>
+                      <small style={{ color: '#7f8c8d', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                        The print link will expire after the selected duration. Files are automatically deleted after expiration or printing.
+                      </small>
+                    </FormGroup>
                   </FormGrid>
                 </FormSection>
 
@@ -828,6 +846,9 @@ const PrintJobSubmission = () => {
                 </FormSection>
                 <div style={{ marginTop: 12, color: '#7f8c8d', fontSize: '14px' }}>
                   <strong>📄 Document Formats Supported:</strong> PDF, Word (DOC, DOCX), Excel (XLS, XLSX), PowerPoint (PPT, PPTX), Text, Images, and more.
+                  <br /><br />
+                  <strong>⏰ Link Expiration:</strong> This link will expire in {lastSubmittedJob.expirationDuration || 15} minutes ({new Date(lastSubmittedJob.expiresAt).toLocaleString()}). 
+                  The file will be automatically deleted after expiration or successful printing.
                   <br /><br />
                   Share this link with the person at the printer to release the job. The link encodes a secure token unique to this job. 
                   Click "Open Print Link" to view and print your document directly.

@@ -365,7 +365,7 @@ const EmptyState = styled.div`
 
 const PrintRelease = () => {
   const { loginWithPin, mockUsers } = useAuth();
-  const { printJobs, releasePrintJob, printers } = usePrintJob();
+  const { printJobs, releasePrintJob, printers, validateTokenAndExpiration } = usePrintJob();
   const params = useParams();
   const location = useLocation();
   const [authMethod, setAuthMethod] = useState(null);
@@ -379,14 +379,43 @@ const PrintRelease = () => {
   const [printedViaIframe, setPrintedViaIframe] = useState(false);
 
   useEffect(() => {
-    // With no backend, validate the token against local state
+    // Validate token and expiration (server-side or client-side)
     const jobId = params.jobId;
     const search = new URLSearchParams(location.search);
     const token = search.get('token');
     if (!jobId || !token) return;
-    const job = printJobs.find(j => j.id === jobId && j.secureToken === token && j.status === 'pending');
-    if (job) setLinkTargetJobId(jobId);
-  }, [params.jobId, location.search, printJobs]);
+    
+    // Try server API validation first (permanent fix)
+    const validateFromServer = async () => {
+      try {
+        const { api } = await import('../api/client');
+        const response = await api.get(`/api/jobs/${jobId}?token=${token}`);
+        if (response.data.job) {
+          setLinkTargetJobId(jobId);
+        }
+      } catch (apiError) {
+        // API not available - use client-side validation (fallback)
+        if (validateTokenAndExpiration) {
+          const validation = validateTokenAndExpiration(jobId, token);
+          if (!validation.valid) {
+            toast.error(validation.error || 'Invalid or expired print link');
+            return;
+          }
+        }
+        
+        const job = printJobs.find(j => j.id === jobId && j.secureToken === token && j.status === 'pending');
+        if (job) {
+          if (job.expiresAt && new Date(job.expiresAt) < new Date()) {
+            toast.error('This print link has expired');
+            return;
+          }
+          setLinkTargetJobId(jobId);
+        }
+      }
+    };
+    
+    validateFromServer();
+  }, [params.jobId, location.search, printJobs, validateTokenAndExpiration]);
 
   // Auto-open print dialog for the actual document once auto-release is done
   useEffect(() => {
