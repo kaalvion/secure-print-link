@@ -378,6 +378,7 @@ const PrintRelease = () => {
   const [autoPrintDone, setAutoPrintDone] = useState(false);
   const [printedViaIframe, setPrintedViaIframe] = useState(false);
   const [serverJob, setServerJob] = useState(null);
+  const releasingRef = React.useRef(false); // Ref to track release status across renders
 
   useEffect(() => {
     // Validate token and expiration (server-side or client-side)
@@ -449,7 +450,51 @@ const PrintRelease = () => {
           setPrintedViaIframe(true);
         } catch (error) {
           console.error('Iframe print failed:', error);
-          toast.error('Failed to print document automatically. Please try downloading it.');
+          
+          // Fallback: Open in new window/tab to guarantee printing works
+          try {
+            console.log('Falling back to new window print...');
+            toast.info('Opening document in new window for printing...');
+            
+            // Create a blob URL instead of data URL for better browser compatibility
+            let urlToOpen = dataUrl;
+            try {
+              if (dataUrl.startsWith('data:')) {
+                const arr = dataUrl.split(',');
+                const mime = arr[0].match(/:(.*?);/)[1];
+                const bstr = atob(arr[1]);
+                let n = bstr.length;
+                const u8arr = new Uint8Array(n);
+                while(n--) {
+                  u8arr[n] = bstr.charCodeAt(n);
+                }
+                const blob = new Blob([u8arr], {type: mime});
+                urlToOpen = URL.createObjectURL(blob);
+              }
+            } catch (e) {
+              console.warn('Failed to create blob URL, using data URL', e);
+            }
+
+            const printWindow = window.open(urlToOpen, '_blank');
+            if (printWindow) {
+              printWindow.focus();
+              printWindow.onload = () => {
+                setTimeout(() => {
+                  printWindow.print();
+                  setPrintedViaIframe(true);
+                  // Clean up blob URL if used
+                  if (urlToOpen !== dataUrl) {
+                    URL.revokeObjectURL(urlToOpen);
+                  }
+                }, 1000);
+              };
+            } else {
+              throw new Error('Popup blocked');
+            }
+          } catch (fallbackError) {
+            console.error('Fallback print failed:', fallbackError);
+            toast.error('Failed to print automatically. Please click the Print button or try downloading.');
+          }
         }
       };
 
@@ -465,7 +510,8 @@ const PrintRelease = () => {
 
       if (isPdf) {
         iframe.src = dataUrl;
-        iframe.onload = () => setTimeout(printIframe, 150);
+        // Increase timeout to allow PDF viewer to fully initialize
+        iframe.onload = () => setTimeout(printIframe, 10000);
       } else if (isImage) {
         const doc = iframe.contentWindow?.document;
         if (doc) {
@@ -541,7 +587,7 @@ const PrintRelease = () => {
     const jobId = params.jobId;
     const search = new URLSearchParams(location.search);
     const token = search.get('token');
-    if (!jobId || !token || autoPrintDone) return;
+    if (!jobId || !token || autoPrintDone || releasingRef.current) return;
     const job = serverJob || printJobs.find(j => j.id === jobId && j.secureToken === token && j.status === 'pending');
     if (!job) return;
     // Find the user for this job
@@ -550,6 +596,8 @@ const PrintRelease = () => {
     // Find the first available online printer
     const printer = printers.find(p => p.status === 'online');
     if (!printer) return;
+    
+    releasingRef.current = true; // Mark as releasing
     setAuthenticatedUser(user);
     setSelectedPrinter(printer);
     setLoading(true);
@@ -560,6 +608,7 @@ const PrintRelease = () => {
         setAutoPrintDone(true);
     })
       .catch((err) => {
+        releasingRef.current = false; // Reset on failure so we can try again
         toast.error('Failed to auto-release print job: ' + (err.message || 'Unknown error'));
         // Do not proceed to print if release failed
         // setAutoPrintDone(true); 
