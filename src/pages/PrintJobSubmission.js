@@ -383,24 +383,74 @@ const PrintJobSubmission = () => {
   const [error, setError] = useState(null);
 
   // Always call hooks at the top!
-  const onDrop = (acceptedFiles) => {
-    const file = acceptedFiles[0];
-    if (file) {
-      setSelectedFile(file);
-      setJobData(prev => ({
-        ...prev,
-        documentName: file.name
-      }));
-      setCurrentStep(2);
+  // Supported file extensions
+  const supportedExtensions = [
+    // Documents
+    '.pdf', '.doc', '.docx', '.txt', '.rtf',
+    // Spreadsheets
+    '.xls', '.xlsx', '.csv',
+    // Presentations
+    '.ppt', '.pptx',
+    // Images
+    '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg',
+    // Other
+    '.json', '.html', '.htm'
+  ];
+
+  // Validate file by extension (fallback when MIME type detection fails)
+  const isValidFileType = (fileName) => {
+    const extension = fileName.toLowerCase().substring(fileName.lastIndexOf('.'));
+    return supportedExtensions.includes(extension);
+  };
+
+  const onDrop = (acceptedFiles, fileRejections) => {
+    // Check if files were rejected
+    if (fileRejections && fileRejections.length > 0) {
+      const rejection = fileRejections[0];
+      const file = rejection.file;
+      
+      // Validate by file extension (more reliable than MIME type)
+      if (isValidFileType(file.name)) {
+        // File extension is valid, accept it even if MIME type was rejected
+        setSelectedFile(file);
+        setJobData(prev => ({
+          ...prev,
+          documentName: file.name
+        }));
+        setCurrentStep(2);
+        toast.success(`File accepted: ${file.name}`);
+        return;
+      } else {
+        // File extension is not supported
+        toast.error(`File type not supported: ${file.name}. Supported formats: ${supportedExtensions.join(', ')}`);
+        return;
+      }
+    }
+    
+    // Handle accepted files (passed MIME type check)
+    if (acceptedFiles && acceptedFiles.length > 0) {
+      const file = acceptedFiles[0];
+      
+      // Double-check by extension (safety check)
+      if (isValidFileType(file.name)) {
+        setSelectedFile(file);
+        setJobData(prev => ({
+          ...prev,
+          documentName: file.name
+        }));
+        setCurrentStep(2);
+      } else {
+        toast.error(`File type not supported: ${file.name}`);
+      }
     }
   };
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  const { getRootProps, getInputProps, isDragActive, fileRejections } = useDropzone({
     onDrop,
     accept: {
       // PDF Documents
       'application/pdf': ['.pdf'],
-      // Word Documents
+      // Word Documents  
       'application/msword': ['.doc'],
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
       // Excel Spreadsheets
@@ -412,14 +462,19 @@ const PrintJobSubmission = () => {
       // Text Files
       'text/plain': ['.txt'],
       'text/csv': ['.csv'],
-      // Images
-      'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'],
+      'text/html': ['.html', '.htm'],
+      // Images (wildcard for all image types)
+      'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.ico'],
       // Additional formats
       'application/rtf': ['.rtf'],
       'application/json': ['.json'],
-      'text/html': ['.html', '.htm']
+      // Fallback: accept as binary if MIME type unknown (we'll validate by extension)
+      'application/octet-stream': ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf']
     },
-    multiple: false
+    multiple: false,
+    // Don't strictly enforce MIME types - we validate by extension
+    noClick: false,
+    noKeyboard: false
   });
 
   // Now do your early returns
@@ -548,15 +603,26 @@ const PrintJobSubmission = () => {
           <form onSubmit={handleSubmit}>
             {currentStep === 1 && (
               <FileUploadSection {...getRootProps()} className={isDragActive ? 'drag-active' : ''}>
-                <input {...getInputProps()} />
+                <input 
+                  {...getInputProps()} 
+                  accept={supportedExtensions.join(',')}
+                  type="file"
+                />
                 <FaUpload className="upload-icon" />
                 <div className="upload-text">
                   {isDragActive ? 'Drop the file here' : 'Drag & drop a file here'}
                 </div>
                 <div className="upload-hint">
                   or click to select a file<br/>
-                  Supported formats: PDF, Word (DOC, DOCX), Excel (XLS, XLSX), PowerPoint (PPT, PPTX), Text (TXT), Images (JPG, PNG, GIF, etc.)
+                  <strong>Supported formats:</strong> PDF, Word (DOC, DOCX), Excel (XLS, XLSX), PowerPoint (PPT, PPTX), Text (TXT, CSV), Images (JPG, PNG, GIF, etc.), RTF, JSON, HTML
                 </div>
+                {fileRejections && fileRejections.length > 0 && (
+                  <div style={{ color: '#e74c3c', marginTop: '10px', fontSize: '14px' }}>
+                    {fileRejections[0].errors[0]?.code === 'file-invalid-type' 
+                      ? 'Please select a supported file type'
+                      : fileRejections[0].errors[0]?.message}
+                  </div>
+                )}
                 <button type="button" className="upload-button">
                   Choose File
                 </button>
