@@ -365,7 +365,7 @@ const CopyButton = styled.button`
 
 const PrintJobSubmission = () => {
   const { currentUser } = useAuth();
-  const { submitPrintJob, loading } = usePrintJob();
+  const { submitPrintJob, isSubmitting, error: apiError, setError: setApiError } = usePrintJob();
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedFile, setSelectedFile] = useState(null);
   const [lastSubmittedJob, setLastSubmittedJob] = useState(null);
@@ -381,7 +381,16 @@ const PrintJobSubmission = () => {
     notes: '',
     expirationDuration: 15 // Default: 15 minutes
   });
-  const [error, setError] = useState(null);
+  const [formError, setFormError] = useState(null);
+  const [validationErrors, setValidationErrors] = useState({});
+
+  // Reset errors when data changes
+  const updateJobData = (updates) => {
+    setJobData(prev => ({ ...prev, ...updates }));
+    if (formError) setFormError(null);
+    if (Object.keys(validationErrors).length > 0) setValidationErrors({});
+    if (apiError) setApiError(null);
+  };
 
   // Always call hooks at the top!
   // Supported file extensions
@@ -479,11 +488,11 @@ const PrintJobSubmission = () => {
   });
 
   // Now do your early returns
-  if (error) {
+  if (apiError) {
     return (
       <div style={{ color: 'red', padding: 32, textAlign: 'center' }}>
         <h2>Something went wrong.</h2>
-        <pre>{error.toString()}</pre>
+        <pre>{apiError.toString()}</pre>
       </div>
     );
   }
@@ -497,11 +506,43 @@ const PrintJobSubmission = () => {
   }
 
   try {
+    const validateForm = () => {
+      const errors = {};
+      if (!selectedFile) errors.file = 'File is required';
+      if (!jobData.documentName.trim()) errors.documentName = 'Document name is required';
+      if (jobData.pages < 1) errors.pages = 'Pages must be at least 1';
+      if (jobData.copies < 1) errors.copies = 'Copies must be at least 1';
+      if (jobData.expirationDuration < 5) errors.expiration = 'Expiration must be at least 5 minutes';
+      
+      setValidationErrors(errors);
+      return Object.keys(errors).length === 0;
+    };
+
     const handleSubmit = async (e) => {
       e.preventDefault();
       
-      if (!selectedFile) {
-        toast.error('Please select a file to print');
+      if (currentStep === 3) {
+        // Reset for another job
+        setSelectedFile(null);
+        setLastSubmittedJob(null);
+        setJobData({
+          documentName: '',
+          pages: 1,
+          copies: 1,
+          color: false,
+          duplex: false,
+          stapling: false,
+          priority: 'normal',
+          printerId: '',
+          notes: '',
+          expirationDuration: 15
+        });
+        setCurrentStep(1);
+        return;
+      }
+
+      if (!validateForm()) {
+        setFormError('Please correct the errors before submitting.');
         return;
       }
 
@@ -510,17 +551,14 @@ const PrintJobSubmission = () => {
           ...jobData,
           userId: currentUser.id,
           userName: currentUser.name,
-          file: selectedFile,
-          fileSize: selectedFile.size,
-          fileType: selectedFile.type
+          file: selectedFile
         };
 
         const result = await submitPrintJob(jobPayload);
-        setLastSubmittedJob(result.job);
-        toast.success('Print job submitted successfully!');
+        setLastSubmittedJob(result);
         setCurrentStep(3);
-      } catch (error) {
-        toast.error(error.message || 'Failed to submit print job');
+      } catch (err) {
+        setFormError(err.message || 'Submission failed. Please try again.');
       }
     };
 
@@ -603,11 +641,16 @@ const PrintJobSubmission = () => {
 
           <form onSubmit={handleSubmit}>
             {currentStep === 1 && (
-              <FileUploadSection {...getRootProps()} className={isDragActive ? 'drag-active' : ''}>
+              <FileUploadSection 
+                {...getRootProps()} 
+                className={`${isDragActive ? 'drag-active' : ''} ${isSubmitting ? 'loading' : ''}`}
+                style={{ cursor: isSubmitting ? 'not-allowed' : 'pointer' }}
+              >
                 <input 
                   {...getInputProps()} 
                   accept={supportedExtensions.join(',')}
                   type="file"
+                  disabled={isSubmitting}
                 />
                 <FaUpload className="upload-icon" />
                 <div className="upload-text">
@@ -615,16 +658,21 @@ const PrintJobSubmission = () => {
                 </div>
                 <div className="upload-hint">
                   or click to select a file<br/>
-                  <strong>Supported formats:</strong> PDF, (Word, Excel, PowerPoint can securely download through website) , Text (TXT, CSV), Images (JPG, PNG, GIF, etc.), RTF, JSON, HTML
+                  <strong>Supported formats:</strong> PDF, Word, Excel, PowerPoint, Text, Images, RTF, JSON, HTML
                 </div>
+                {validationErrors.file && (
+                  <div style={{ color: 'var(--error-color)', marginTop: '10px', fontSize: '14px', fontWeight: '600' }}>
+                    {validationErrors.file}
+                  </div>
+                )}
                 {fileRejections && fileRejections.length > 0 && (
-                  <div style={{ color: '#e74c3c', marginTop: '10px', fontSize: '14px' }}>
+                  <div style={{ color: 'var(--error-color)', marginTop: '10px', fontSize: '14px' }}>
                     {fileRejections[0].errors[0]?.code === 'file-invalid-type' 
                       ? 'Please select a supported file type'
                       : fileRejections[0].errors[0]?.message}
                   </div>
                 )}
-                <button type="button" className="upload-button">
+                <button type="button" className="upload-button" disabled={isSubmitting}>
                   Choose File
                 </button>
               </FileUploadSection>
@@ -633,7 +681,7 @@ const PrintJobSubmission = () => {
             {selectedFile && (() => {
               const FileIcon = getFileIcon(selectedFile);
               return (
-                <FilePreview>
+                <FilePreview style={{ opacity: isSubmitting ? 0.7 : 1 }}>
                   <div className="file-icon">
                     <FileIcon />
                   </div>
@@ -641,7 +689,7 @@ const PrintJobSubmission = () => {
                     <div className="file-name">{selectedFile.name}</div>
                     <div className="file-size">{formatFileSize(selectedFile.size)} • {selectedFile.type || 'Unknown type'}</div>
                   </div>
-                  <button type="button" className="remove-file" onClick={removeFile}>
+                  <button type="button" className="remove-file" onClick={removeFile} disabled={isSubmitting}>
                     <FaTimes />
                   </button>
                 </FilePreview>
@@ -650,7 +698,7 @@ const PrintJobSubmission = () => {
 
             {currentStep >= 2 && currentStep !== 3 && (
               <>
-                <FormSection>
+                <FormSection style={{ opacity: isSubmitting ? 0.7 : 1 }}>
                   <div className="section-title">
                     <FaCog />
                     Print Settings
@@ -661,10 +709,12 @@ const PrintJobSubmission = () => {
                       <input
                         type="text"
                         value={jobData.documentName}
-                        onChange={(e) => setJobData(prev => ({ ...prev, documentName: e.target.value }))}
+                        onChange={(e) => updateJobData({ documentName: e.target.value })}
                         placeholder="Enter document name"
-                        required
+                        disabled={isSubmitting}
+                        style={{ borderColor: validationErrors.documentName ? 'var(--error-color)' : '' }}
                       />
+                      {validationErrors.documentName && <small style={{ color: 'var(--error-color)' }}>{validationErrors.documentName}</small>}
                     </FormGroup>
                     <FormGroup>
                       <label>Number of Pages</label>
@@ -672,8 +722,8 @@ const PrintJobSubmission = () => {
                         type="number"
                         min="1"
                         value={jobData.pages}
-                        onChange={(e) => setJobData(prev => ({ ...prev, pages: parseInt(e.target.value) }))}
-                        required
+                        onChange={(e) => updateJobData({ pages: parseInt(e.target.value) || 0 })}
+                        disabled={isSubmitting}
                       />
                     </FormGroup>
                     <FormGroup>
@@ -683,15 +733,16 @@ const PrintJobSubmission = () => {
                         min="1"
                         max="100"
                         value={jobData.copies}
-                        onChange={(e) => setJobData(prev => ({ ...prev, copies: parseInt(e.target.value) }))}
-                        required
+                        onChange={(e) => updateJobData({ copies: parseInt(e.target.value) || 0 })}
+                        disabled={isSubmitting}
                       />
                     </FormGroup>
                     <FormGroup>
                       <label>Priority</label>
                       <select
                         value={jobData.priority}
-                        onChange={(e) => setJobData(prev => ({ ...prev, priority: e.target.value }))}
+                        onChange={(e) => updateJobData({ priority: e.target.value })}
+                        disabled={isSubmitting}
                       >
                         <option value="low">Low</option>
                         <option value="normal">Normal</option>
@@ -703,8 +754,8 @@ const PrintJobSubmission = () => {
                       <label>Link Expiration Duration</label>
                       <select
                         value={jobData.expirationDuration}
-                        onChange={(e) => setJobData(prev => ({ ...prev, expirationDuration: parseInt(e.target.value) }))}
-                        required
+                        onChange={(e) => updateJobData({ expirationDuration: parseInt(e.target.value) })}
+                        disabled={isSubmitting}
                       >
                         <option value={5}>5 minutes</option>
                         <option value={10}>10 minutes</option>
@@ -712,14 +763,14 @@ const PrintJobSubmission = () => {
                         <option value={30}>30 minutes</option>
                         <option value={60}>1 hour</option>
                       </select>
-                      <small style={{ color: '#7f8c8d', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                        The print link will expire after the selected duration. Files are automatically deleted after expiration or printing.
+                      <small style={{ color: 'var(--text-secondary)', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                        The print link will expire after the selected duration.
                       </small>
                     </FormGroup>
                   </FormGrid>
                 </FormSection>
 
-                <FormSection>
+                <FormSection style={{ opacity: isSubmitting ? 0.7 : 1 }}>
                   <div className="section-title">
                     <FaPrint />
                     Print Options
@@ -730,7 +781,8 @@ const PrintJobSubmission = () => {
                         type="checkbox"
                         id="color"
                         checked={jobData.color}
-                        onChange={(e) => setJobData(prev => ({ ...prev, color: e.target.checked }))}
+                        onChange={(e) => updateJobData({ color: e.target.checked })}
+                        disabled={isSubmitting}
                       />
                       <label htmlFor="color">Color Printing</label>
                     </div>
@@ -739,7 +791,8 @@ const PrintJobSubmission = () => {
                         type="checkbox"
                         id="duplex"
                         checked={jobData.duplex}
-                        onChange={(e) => setJobData(prev => ({ ...prev, duplex: e.target.checked }))}
+                        onChange={(e) => updateJobData({ duplex: e.target.checked })}
+                        disabled={isSubmitting}
                       />
                       <label htmlFor="duplex">Double-sided Printing</label>
                     </div>
@@ -748,7 +801,8 @@ const PrintJobSubmission = () => {
                         type="checkbox"
                         id="stapling"
                         checked={jobData.stapling}
-                        onChange={(e) => setJobData(prev => ({ ...prev, stapling: e.target.checked }))}
+                        onChange={(e) => updateJobData({ stapling: e.target.checked })}
+                        disabled={isSubmitting}
                       />
                       <label htmlFor="stapling">Stapling</label>
                     </div>
@@ -856,15 +910,37 @@ const PrintJobSubmission = () => {
               </>
             )}
 
-            <SubmitButton type="submit" disabled={loading || !selectedFile}>
-              {loading ? 'Submitting...' : (currentStep === 3 ? 'Submit Another Job' : 'Submit Print Job')}
+            {(formError || apiError) && (
+              <div style={{ 
+                padding: '12px', 
+                background: '#fef2f2', 
+                color: 'var(--error-color)', 
+                borderRadius: '8px', 
+                marginBottom: '20px',
+                fontSize: '14px',
+                border: '1px solid #fee2e2',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <FaExclamationTriangle />
+                <span>{formError || apiError}</span>
+              </div>
+            )}
+
+            <SubmitButton 
+              type="submit" 
+              disabled={isSubmitting || (currentStep === 1 && !selectedFile)}
+              className={isSubmitting ? 'loading' : ''}
+            >
+              {isSubmitting ? 'Submitting...' : (currentStep === 3 ? 'Submit Another Job' : 'Submit Print Job')}
             </SubmitButton>
           </form>
         </SubmissionCard>
       </SubmissionContainer>
     );
   } catch (err) {
-    setError(err);
+    setApiError(err);
     return null;
   }
 };

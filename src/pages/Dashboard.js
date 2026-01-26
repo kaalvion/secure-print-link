@@ -363,7 +363,7 @@ const SystemStatus = styled.div`
 
 const Dashboard = () => {
   const { currentUser } = useAuth();
-  const { printJobs, getJobStatistics, printers: allPrinters } = usePrintJob();
+  const { printJobs, getJobStatistics, printers: allPrinters, isFetching } = usePrintJob();
   const navigate = useNavigate();
   const [userJobs, setUserJobs] = useState([]);
   const [printers, setPrinters] = useState([]);
@@ -397,6 +397,7 @@ const Dashboard = () => {
   const offlinePrinters = printers.filter(p => p.status === 'offline');
 
   const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
@@ -404,6 +405,60 @@ const Dashboard = () => {
       minute: '2-digit'
     });
   };
+
+  if (isFetching && (!printJobs.length || !printers.length)) {
+    return (
+      <DashboardContainer>
+        <PageHeader>
+          <div className="skeleton skeleton-title" style={{ height: '2.5rem', width: '200px' }}></div>
+          <div className="skeleton skeleton-text" style={{ width: '400px' }}></div>
+        </PageHeader>
+
+        <StatsGrid>
+          {[1, 2, 3, 4, 5, 6].map(i => (
+            <StatCard key={i}>
+              <div className="skeleton skeleton-circle"></div>
+              <div className="stat-info">
+                <div className="skeleton skeleton-title" style={{ width: '40px', marginBottom: '4px' }}></div>
+                <div className="skeleton skeleton-text" style={{ width: '80px' }}></div>
+              </div>
+            </StatCard>
+          ))}
+        </StatsGrid>
+
+        <ContentGrid>
+          <MainContent>
+            <Section>
+              <div className="skeleton skeleton-title"></div>
+              <JobList>
+                {[1, 2, 3].map(i => (
+                  <JobItem key={i}>
+                    <div className="job-info">
+                      <div className="skeleton skeleton-circle"></div>
+                      <div className="job-details">
+                        <div className="skeleton skeleton-text" style={{ width: '150px' }}></div>
+                        <div className="skeleton skeleton-text" style={{ width: '100px' }}></div>
+                      </div>
+                    </div>
+                  </JobItem>
+                ))}
+              </JobList>
+            </Section>
+          </MainContent>
+          <SidebarContent>
+            <Section>
+              <div className="skeleton skeleton-title"></div>
+              <QuickActions>
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="skeleton skeleton-rect" style={{ height: '70px', borderRadius: 'var(--border-radius-md)' }}></div>
+                ))}
+              </QuickActions>
+            </Section>
+          </SidebarContent>
+        </ContentGrid>
+      </DashboardContainer>
+    );
+  }
 
   return (
     <DashboardContainer>

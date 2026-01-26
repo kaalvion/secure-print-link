@@ -31,6 +31,10 @@ const SidebarContainer = styled.aside`
   box-shadow: var(--shadow-lg);
   z-index: 900;
   
+  @media (max-width: 1199px) and (min-width: 769px) {
+    width: ${props => props.isOpen ? '260px' : '80px'};
+  }
+
   @media (max-width: 768px) {
     position: fixed;
     top: 0;
@@ -314,6 +318,30 @@ const Sidebar = ({ isOpen, onToggle }) => {
   const { currentUser } = useAuth();
   const location = useLocation();
   const [isMobile, setIsMobile] = useState(false);
+  const [isTablet, setIsTablet] = useState(false);
+
+  // Check if device is mobile or tablet
+  useEffect(() => {
+    const checkSize = () => {
+      const width = window.innerWidth;
+      setIsMobile(width <= 768);
+      setIsTablet(width > 768 && width <= 1199);
+    };
+    
+    checkSize();
+    window.addEventListener('resize', checkSize);
+    
+    return () => window.removeEventListener('resize', checkSize);
+  }, []);
+
+  // Handle initial state for tablet (icon-only)
+  useEffect(() => {
+    if (isTablet) {
+      onToggle(false);
+    } else if (!isMobile) {
+      onToggle(true);
+    }
+  }, [isTablet, isMobile, onToggle]);
 
   const getInitials = (name) => {
     return name
@@ -360,25 +388,6 @@ const Sidebar = ({ isOpen, onToggle }) => {
       return true;
     })
   })).filter(section => section.items.length > 0);
-
-  // Check if device is mobile
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth <= 768);
-    };
-    
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
-
-  // Close sidebar when navigating on mobile
-  useEffect(() => {
-    if (isMobile && isOpen) {
-      onToggle(false);
-    }
-  }, [location, isMobile, isOpen, onToggle]);
 
   const handleOverlayClick = () => {
     if (isMobile) {

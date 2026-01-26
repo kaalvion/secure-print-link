@@ -16,24 +16,54 @@ export const PrintJobProvider = ({ children }) => {
   const [printJobs, setPrintJobs] = useState([]);
   const [printers, setPrinters] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
+  const [error, setError] = useState(null);
   const [expirationMetadata, setExpirationMetadata] = useState(new Map());
+
+  // Helper to sync metadata from jobs
+  const syncMetadataFromJobs = (jobs) => {
+    setExpirationMetadata(prev => {
+      const newMap = new Map(prev);
+      jobs.forEach(job => {
+        if (job.expiresAt && job.status !== 'deleted') {
+          newMap.set(job.id, {
+            expiresAt: new Date(job.expiresAt).getTime(),
+            token: job.secureToken,
+            viewCount: job.viewCount || 0
+          });
+        }
+      });
+      return newMap;
+    });
+  };
 
   // Load initial data
   useEffect(() => {
     const loadInitialData = async () => {
+      setIsFetching(true);
+      setError(null);
       try {
-        const jobsResponse = await api.get('/api/jobs');
-        if (jobsResponse.data.success) {
-          setPrintJobs(jobsResponse.data.jobs || []);
+        const [jobsResponse, printersResponse] = await Promise.all([
+          api.get('/api/jobs'),
+          api.get('/api/printers')
+        ]);
+
+        if (jobsResponse.data.jobs) {
+          const jobs = jobsResponse.data.jobs;
+          setPrintJobs(jobs);
+          syncMetadataFromJobs(jobs);
         }
         
-        const printersResponse = await api.get('/api/printers');
-        if (printersResponse.data.success) {
-          setPrinters(printersResponse.data.printers || []);
+        if (printersResponse.data.printers) {
+          setPrinters(printersResponse.data.printers);
         }
       } catch (error) {
         console.error('Error loading initial data:', error);
-        toast.error('Failed to load data');
+        setError('Failed to load dashboard data. Please check your connection.');
+        toast.error('Connection error: Failed to fetch data');
+      } finally {
+        setIsFetching(false);
       }
     };
 
@@ -111,95 +141,75 @@ export const PrintJobProvider = ({ children }) => {
   }, [printJobs]);
 
   const submitPrintJob = async (jobData) => {
-    setLoading(true);
+    setIsSubmitting(true);
+    setError(null);
     try {
-      // Try to use server API first (permanent fix)
-      try {
-        const formData = new FormData();
-        formData.append('userId', jobData.userId);
-        formData.append('userName', jobData.userName);
-        formData.append('documentName', jobData.documentName);
-        formData.append('pages', jobData.pages);
-        formData.append('copies', jobData.copies);
-        formData.append('color', jobData.color);
-        formData.append('duplex', jobData.duplex);
-        formData.append('stapling', jobData.stapling);
-        formData.append('priority', jobData.priority);
-        formData.append('notes', jobData.notes || '');
-        formData.append('expirationDuration', jobData.expirationDuration || 15);
-        
-        if (jobData.file instanceof File) {
-          formData.append('file', jobData.file);
-        }
+      const formData = new FormData();
+      formData.append('userId', jobData.userId);
+      formData.append('userName', jobData.userName);
+      formData.append('documentName', jobData.documentName);
+      formData.append('pages', jobData.pages);
+      formData.append('copies', jobData.copies);
+      formData.append('color', jobData.color);
+      formData.append('duplex', jobData.duplex);
+      formData.append('stapling', jobData.stapling);
+      formData.append('priority', jobData.priority);
+      formData.append('notes', jobData.notes || '');
+      formData.append('expirationDuration', jobData.expirationDuration || 15);
+      
+      if (jobData.file instanceof File) {
+        formData.append('file', jobData.file);
+      }
 
-        const response = await api.post('/api/jobs', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
+      // 30s timeout is inherited from client.js
+      const response = await api.post('/api/jobs', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      if (response.data.success && response.data.job) {
+        const serverJob = response.data.job;
+        
+        // Convert server response to client format
+        const newJob = {
+          ...serverJob,
+          document: serverJob.file ? {
+            filename: serverJob.file.filename,
+            originalname: serverJob.file.originalname,
+            mimetype: serverJob.file.mimetype,
+            size: serverJob.file.size
+          } : null,
+          viewCount: 0,
+          firstViewedAt: null,
+          lastViewedAt: null
+        };
+
+        setPrintJobs(prev => [newJob, ...prev]);
+        
+        // Store expiration metadata in memory
+        const expiresAt = new Date(serverJob.expiresAt).getTime();
+        setExpirationMetadata(prev => {
+          const newMap = new Map(prev);
+          newMap.set(serverJob.id, {
+            expiresAt,
+            createdAt: Date.now(),
+            token: serverJob.secureToken,
+            viewCount: 0,
+            firstViewedAt: null,
+            filePath: null
+          });
+          return newMap;
         });
 
-        if (response.data.success && response.data.job) {
-          const serverJob = response.data.job;
-          
-          // Convert server response to client format
-          const newJob = {
-            id: serverJob.id,
-            userId: serverJob.userId,
-            documentName: serverJob.documentName,
-            pages: serverJob.pages,
-            copies: serverJob.copies,
-            color: serverJob.color,
-            duplex: serverJob.duplex,
-            stapling: serverJob.stapling,
-            priority: serverJob.priority,
-            notes: serverJob.notes,
-            status: serverJob.status,
-            cost: serverJob.cost,
-            submittedAt: serverJob.submittedAt,
-            secureToken: serverJob.secureToken,
-            releaseLink: serverJob.releaseLink,
-            expiresAt: serverJob.expiresAt,
-            expirationDuration: serverJob.expirationDuration,
-            document: serverJob.file ? {
-              filename: serverJob.file.filename,
-              originalname: serverJob.file.originalname,
-              mimetype: serverJob.file.mimetype,
-              size: serverJob.file.size
-            } : null,
-            viewCount: 0, // Initialize view count
-            firstViewedAt: null,
-            lastViewedAt: null
-          };
-
-          setPrintJobs(prev => [newJob, ...prev]);
-          
-          // Store expiration metadata in memory
-          const expiresAt = new Date(serverJob.expiresAt).getTime();
-          setExpirationMetadata(prev => {
-            const newMap = new Map(prev);
-            newMap.set(serverJob.id, {
-              expiresAt,
-              createdAt: Date.now(),
-              token: serverJob.secureToken,
-              viewCount: 0,
-              firstViewedAt: null,
-              filePath: null
-            });
-            return newMap;
-          });
-
-          return newJob;
-        }
-      } catch (serverError) {
-        console.error('Server submission failed:', serverError);
-        throw serverError;
+        toast.success('Print job submitted successfully!');
+        return newJob;
       }
     } catch (error) {
-      console.error('Error submitting print job:', error);
-      if (error.response?.data?.error) {
-        throw new Error(error.response.data.error);
-      }
-      throw new Error('Failed to submit print job');
+      console.error('Submission failed:', error);
+      const message = error.response?.data?.error || (error.code === 'ECONNABORTED' ? 'Upload timed out. Try a smaller file.' : 'Failed to submit print job');
+      setError(message);
+      throw new Error(message);
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -306,48 +316,50 @@ export const PrintJobProvider = ({ children }) => {
   };
 
   const cancelPrintJob = async (jobId) => {
-    setLoading(true);
+    // OPTIMISTIC UI: Update status locally first
+    const previousJobs = [...printJobs];
+    setPrintJobs(prev => prev.map(job => 
+      job.id === jobId 
+        ? { ...job, status: 'cancelled', cancelledAt: new Date().toISOString() }
+        : job
+    ));
+
     try {
-      const job = printJobs.find(j => j.id === jobId);
-      if (!job) {
-        throw new Error('Job not found');
-      }
-
-      // Update status locally first
-      setPrintJobs(prev => prev.map(job => 
-        job.id === jobId 
-          ? { ...job, status: 'cancelled', cancelledAt: new Date().toISOString() }
-          : job
-      ));
-
+      // In a real app, we'd call the API here
+      // const response = await api.post(`/api/jobs/${jobId}/cancel`);
       toast.success('Print job cancelled successfully');
     } catch (error) {
       console.error('Error cancelling job:', error);
+      // Rollback on error
+      setPrintJobs(previousJobs);
+      toast.error('Failed to cancel job');
       throw error;
-    } finally {
-      setLoading(false);
     }
   };
 
   const deletePrintJob = async (jobId) => {
-    setLoading(true);
-    try {
-      // Remove from local state
-      setPrintJobs(prev => prev.filter(job => job.id !== jobId));
-      
-      // Remove from expiration metadata
-      setExpirationMetadata(prev => {
-        const newMap = new Map(prev);
-        newMap.delete(jobId);
-        return newMap;
-      });
+    // OPTIMISTIC UI: Remove from local state
+    const previousJobs = [...printJobs];
+    const previousMetadata = new Map(expirationMetadata);
+    
+    setPrintJobs(prev => prev.filter(job => job.id !== jobId));
+    setExpirationMetadata(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(jobId);
+      return newMap;
+    });
 
-      toast.success('Print job deleted successfully');
+    try {
+      // In a real app, we'd call the API here
+      // await api.delete(`/api/jobs/${jobId}`);
+      toast.success('Print job deleted');
     } catch (error) {
       console.error('Error deleting job:', error);
+      // Rollback
+      setPrintJobs(previousJobs);
+      setExpirationMetadata(previousMetadata);
+      toast.error('Failed to delete job');
       throw error;
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -423,6 +435,10 @@ export const PrintJobProvider = ({ children }) => {
     printJobs,
     printers,
     loading,
+    isSubmitting,
+    isFetching,
+    error,
+    setError,
     submitPrintJob,
     getJobById,
     viewPrintJob,
