@@ -1,248 +1,216 @@
 # Secure Print Link
 
-A comprehensive secure printing solution that protects confidential documents through encryption, authentication, and hold-and-release printing technology.
+A secure, responsive print management system for enterprise environments.
 
-## 🛡️ Overview
+## 🎯 Key Features
 
-Secure Print Link addresses the critical security vulnerabilities in traditional printing environments by implementing a secure "hold-and-release" system. This prevents sensitive documents from being left unattended on printer output trays, ensuring confidential information remains protected.
+### 🔒 Security Features
+- **Single-use View Enforcement**: Documents can only be viewed once
+- **Secure Token Generation**: Cryptographically secure job tokens
+- **Time-based Expiration**: Automatic cleanup of expired jobs (60-second server-side cleanup)
+- **Role-based Access Control**: Different permissions for users and admins
+- **Audit Trail**: Complete logging of job views and releases
 
-## ✨ Key Features
+### 📱 Responsive Design
+- **Mobile-first approach** with breakpoints for:
+  - Mobile: 0-768px
+  - Tablet: 768px-1024px
+  - Desktop: 1024px+
+- **Collapsible Sidebar**: Auto-collapses on mobile with hamburger menu
+- **Touch-friendly controls**: Minimum 44px touch targets
+- **Proper scrolling**: No blank pages, content adapts to viewport
 
-### 🔐 Multi-Factor Authentication
-- **Username/Password Login**: Traditional credential-based authentication
-- **PIN Code Authentication**: Quick 4-digit PIN for printer release
-- **QR Code Authentication**: Mobile app integration for seamless access
-- **Role-based Access Control**: Admin and user permissions
+### 🔄 Job Lifecycle Enforcement
+```
+SUBMITTED → PENDING → (VIEW once) → RELEASED → DELETED
+                ↘ (EXPIRED) → DELETED
+```
 
-### 📄 Secure Print Job Management
-- **Document Upload**: Drag-and-drop file upload with support for PDF, DOC, DOCX, TXT, and images
-- **Encryption**: End-to-end encryption for all documents
-- **Secure Tokens**: Unique tokens generated for each print job
-- **Job Queue Management**: Comprehensive job tracking and management
+- **Strict one-time view**: Button permanently disabled after first view
+- **Backend enforcement**: Server-side validation prevents multiple views
+- **Automatic cleanup**: Expired jobs deleted from database and file storage
+- **No client-side reliance**: All timing handled server-side
 
-### 🖨️ Printer Integration
-- **Printer Management**: Add, configure, and monitor network printers
-- **Status Monitoring**: Real-time printer status and health monitoring
-- **Capability Detection**: Automatic detection of printer features (color, duplex, stapling)
-- **Location-based Printing**: Department-specific printer assignments
+### 📊 Data Consistency
+- **Single source of truth**: Dashboard and job queue use identical data
+- **Real-time synchronization**: All components reflect backend state
+- **Stateless architecture**: Server restarts don't lose data integrity
+- **API-level validation**: All input validated at the server level
 
-### 📊 Analytics & Reporting
-- **Usage Statistics**: Detailed print job analytics
-- **Cost Tracking**: Per-job and departmental cost analysis
-- **Audit Trails**: Complete logging of all print activities
-- **Performance Metrics**: Printer uptime and efficiency reports
+## 🛠️ Technical Implementation
 
-### 🎨 Modern User Interface
-- **Responsive Design**: Works seamlessly on desktop, tablet, and mobile
-- **Intuitive Navigation**: Clean, modern interface with easy-to-use controls
-- **Real-time Updates**: Live status updates and notifications
-- **Accessibility**: WCAG compliant design with keyboard navigation
+### Frontend Stack
+- React with Hooks
+- Styled Components for CSS-in-JS
+- Responsive design system with mobile-first approach
+- Comprehensive error handling and validation
+
+### Backend Stack
+- Node.js with Express
+- SQLite database with proper indexing
+- In-memory expiration metadata for performance
+- RESTful API with comprehensive validation
+
+### Security Measures
+- Token-based authentication
+- Input sanitization and validation
+- Secure file handling
+- Audit logging for compliance
+
+## 📱 Responsive Breakpoints
+
+| Device | Breakpoint | Features |
+|--------|------------|----------|
+| Mobile | 0-768px | Hamburger menu, collapsible sidebar, touch targets |
+| Tablet | 768px-1024px | Adaptive grid, optimized spacing |
+| Desktop | 1024px+ | Full sidebar, multi-column layouts |
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js (v16 or higher)
-- npm (v8 or higher)
+- Node.js 14+
+- npm or yarn
 
 ### Installation
+```bash
+# Clone the repository
+git clone <repository-url>
+cd secure-print-link
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd secureprintlink
-   ```
+# Install dependencies
+npm install
 
-2. **Install dependencies**
-   ```bash
-   npm install --legacy-peer-deps
-   ```
+# Start development server
+npm start
 
-3. **Start the development server**
-   ```bash
-   npm start
-   ```
-
-4. **Open your browser**
-   Navigate to `http://localhost:3000`
-
-### Demo Credentials
-
-The application includes demo users for testing:
-
-| Role | Username | Password | PIN |
-|------|----------|----------|-----|
-| Admin | admin | admin123 | 1234 |
-| User 1 | user1 | user123 | 5678 |
-| User 2 | user2 | user123 | 9012 |
-
-## 📱 Usage Guide
-
-### For Users
-
-1. **Login**: Use your credentials or PIN to access the system
-2. **Submit Print Job**: 
-   - Upload your document
-   - Configure print settings (pages, copies, color, etc.)
-   - Submit the job securely
-3. **Release at Printer**:
-   - Go to any compatible printer
-   - Authenticate using PIN or QR code
-   - Select and release your print jobs
-
-### For Administrators
-
-1. **User Management**: Add, edit, and manage user accounts
-2. **Printer Management**: Configure and monitor network printers
-3. **System Monitoring**: View analytics and system health
-4. **Security Settings**: Configure authentication and security policies
-
-## 🏗️ Architecture
-
-### Frontend
-- **React 19**: Modern React with hooks and functional components
-- **Styled Components**: CSS-in-JS for maintainable styling
-- **React Router**: Client-side routing
-- **Context API**: State management for authentication and print jobs
-
-### Security Features
-- **CryptoJS**: Document encryption and secure token generation
-- **QR Code Generation**: Secure authentication tokens
-- **Session Management**: Secure user sessions with timeout
-- **Input Validation**: Comprehensive form validation
-
-### Data Management
-- **Local Storage**: Persistent user sessions and job data
-- **Mock Data**: Demo data for testing and demonstration
-- **State Management**: Centralized state with React Context
-
-## 🔧 Configuration
+# Start backend server (in separate terminal)
+cd server
+npm install
+npm start
+```
 
 ### Environment Variables
-Create a `.env` file in the root directory:
-
+Create a `.env` file in the server directory:
 ```env
-REACT_APP_API_URL=http://localhost:3001
-REACT_APP_ENCRYPTION_KEY=your-secret-key
-REACT_APP_SESSION_TIMEOUT=30
+PORT=4000
+MAX_UPLOAD_BYTES=20971520  # 20MB
+PUBLIC_BASE_URL=http://localhost:4000
 ```
 
-### Customization
-- **Branding**: Update colors and logos in the theme configuration
-- **Printer Integration**: Configure printer-specific settings
-- **Authentication**: Customize authentication methods and policies
+## 📋 API Endpoints
 
-## 📊 Features in Detail
+### Jobs
+- `POST /api/jobs` - Submit new print job
+- `GET /api/jobs/:id` - Get job details (single-view enforced)
+- `POST /api/jobs/:id/view` - View document (one-time only)
+- `POST /api/jobs/:id/release` - Release job for printing
+- `POST /api/jobs/:id/complete` - Mark job as completed
 
-### Secure Print Workflow
+### Printers
+- `GET /api/printers` - Get all printers
+- `POST /api/printers` - Add new printer
+- `PUT /api/printers/:id` - Update printer
+- `DELETE /api/printers/:id` - Delete printer
 
-1. **Document Submission**
-   - User uploads document through web interface
-   - Document is encrypted and stored securely
-   - Unique secure token is generated
-   - QR code is created for printer authentication
+## 🔧 Development Guidelines
 
-2. **Authentication**
-   - Multiple authentication methods supported
-   - PIN-based authentication for quick access
-   - QR code scanning for mobile integration
-   - Role-based access control
-
-3. **Print Release**
-   - User authenticates at printer location
-   - Secure token validation
-   - Job selection and release
-   - Audit trail logging
-
-4. **Job Management**
-   - Real-time job status tracking
-   - Job cancellation and modification
-   - Cost calculation and reporting
-   - Historical job data
-
-### Security Measures
-
-- **Document Encryption**: All documents encrypted in transit and storage
-- **Secure Tokens**: Cryptographically secure tokens for job release
-- **Session Management**: Secure user sessions with automatic timeout
-- **Audit Logging**: Complete audit trail of all activities
-- **Access Control**: Role-based permissions and restrictions
-
-## 🛠️ Development
-
-### Project Structure
+### Code Structure
 ```
 src/
-├── components/          # Reusable UI components
-│   ├── Header.js       # Application header
-│   └── Sidebar.js      # Navigation sidebar
-├── context/            # React Context providers
-│   ├── AuthContext.js  # Authentication state
-│   └── PrintJobContext.js # Print job management
-├── pages/              # Application pages
-│   ├── Authentication.js
-│   ├── Dashboard.js
-│   ├── PrintJobSubmission.js
-│   ├── PrintJobQueue.js
-│   ├── PrintRelease.js
-│   ├── PrinterManagement.js
-│   ├── UserManagement.js
-│   ├── Reports.js
-│   └── Settings.js
-├── App.js              # Main application component
-└── index.js            # Application entry point
+├── components/     # Reusable UI components
+├── context/        # React context providers
+├── pages/          # Page components
+├── api/            # API client and utilities
+├── utils/          # Utility functions
+└── styles/         # Global styles and themes
 ```
 
-### Available Scripts
+### Responsive Design Principles
+1. **Mobile-first**: Start with mobile styles, enhance for larger screens
+2. **Flexible grids**: Use CSS Grid and Flexbox for adaptive layouts
+3. **Proper breakpoints**: Use standard breakpoints for consistency
+4. **Touch considerations**: Ensure adequate touch targets and spacing
 
-- `npm start`: Start development server
-- `npm build`: Build for production
-- `npm test`: Run test suite
-- `npm eject`: Eject from Create React App
+### Security Best Practices
+1. **Server-side validation**: Never trust client-side validation alone
+2. **Input sanitization**: Sanitize all user inputs
+3. **Secure tokens**: Use cryptographically secure token generation
+4. **Audit logging**: Log all security-relevant actions
 
-## 🔮 Future Enhancements
+## 🧪 Testing
 
-### Planned Features
-- **Mobile App**: Native iOS and Android applications
-- **Cloud Integration**: AWS/Azure cloud deployment
-- **Advanced Analytics**: Machine learning insights
-- **API Integration**: RESTful API for third-party integration
-- **Multi-language Support**: Internationalization
-- **Advanced Security**: Biometric authentication
+### Manual Testing Checklist
+- [ ] Mobile responsiveness (various screen sizes)
+- [ ] Single-view enforcement
+- [ ] Job expiration and cleanup
+- [ ] Cross-browser compatibility
+- [ ] Error handling and validation
+- [ ] Empty state handling
+- [ ] Loading states and indicators
 
-### Technical Improvements
-- **Backend API**: Node.js/Express or Python/Django backend
-- **Database**: PostgreSQL or MongoDB for data persistence
-- **Real-time Updates**: WebSocket integration
-- **Microservices**: Scalable microservices architecture
-- **Containerization**: Docker deployment
-- **CI/CD**: Automated testing and deployment
+### Automated Testing
+```bash
+# Run frontend tests
+npm test
+
+# Run backend tests
+cd server
+npm test
+```
+
+## 📈 Performance Considerations
+
+### Frontend
+- Code splitting for faster initial loads
+- Lazy loading of non-critical components
+- Efficient state management with React Context
+- Optimized bundle size
+
+### Backend
+- Database indexing for performance
+- In-memory caching for frequently accessed data
+- Efficient file handling and cleanup
+- Rate limiting for API endpoints
+
+## 🚨 Security Notes
+
+### ⚠️ Browser Limitations
+- **PDF viewing**: Limited to browser-native PDF viewers
+- **Office documents**: May require download for full functionality
+- **Large files**: Storage limitations in localStorage
+- **Cross-origin**: File access restrictions in browsers
+
+### 🔐 Security Measures Implemented
+- **Single-view enforcement**: Backend validates view count
+- **Token expiration**: Server-side time validation
+- **File cleanup**: Automatic deletion of expired files
+- **Input validation**: Comprehensive server-side validation
+- **Audit trail**: Logging of all actions for compliance
+
+## 📚 Documentation
+
+### Additional Resources
+- [API Documentation](docs/api.md)
+- [Security Guidelines](docs/security.md)
+- [Deployment Guide](docs/deployment.md)
+- [Troubleshooting](docs/troubleshooting.md)
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Open a pull request
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## 🆘 Support
 
-For support and questions:
-- Create an issue in the GitHub repository
-- Contact the development team
-- Check the documentation
-
-## 🙏 Acknowledgments
-
-- React team for the amazing framework
-- Styled Components for CSS-in-JS solution
-- React Icons for the icon library
-- All contributors and testers
+For issues and feature requests, please use the GitHub issue tracker.
 
 ---
 
-**Secure Print Link** - Protecting your documents, one print job at a time. 🛡️🖨️
+**Secure Print Link** - Enterprise-grade print management with security at its core.

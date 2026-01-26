@@ -21,8 +21,11 @@ const HeaderContainer = styled.header`
   align-items: center;
   justify-content: space-between;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-  position: relative;
-  z-index: 100;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
 `;
 
 const LeftSection = styled.div`
@@ -44,6 +47,10 @@ const MenuButton = styled.button`
   &:hover {
     background-color: rgba(255, 255, 255, 0.1);
   }
+  
+  @media (min-width: 769px) {
+    display: none;
+  }
 `;
 
 const Logo = styled.div`
@@ -55,6 +62,14 @@ const Logo = styled.div`
   
   .logo-icon {
     font-size: 24px;
+  }
+  
+  @media (max-width: 768px) {
+    font-size: 18px;
+    
+    .logo-text {
+      display: none;
+    }
   }
 `;
 
@@ -116,6 +131,10 @@ const UserInfo = styled.div`
     font-size: 12px;
     opacity: 0.8;
   }
+  
+  @media (max-width: 768px) {
+    display: none;
+  }
 `;
 
 const UserAvatar = styled.button`
@@ -161,6 +180,19 @@ const DropdownMenu = styled.div`
     border-right: 8px solid transparent;
     border-bottom: 8px solid white;
   }
+  
+  @media (max-width: 768px) {
+    position: fixed;
+    top: 60px;
+    right: 16px;
+    left: 16px;
+    min-width: auto;
+    margin-top: 0;
+    
+    &::before {
+      display: none;
+    }
+  }
 `;
 
 const DropdownItem = styled.button`
@@ -200,7 +232,7 @@ const Header = ({ onMenuToggle }) => {
 
   const handleLogout = () => {
     logout();
-    navigate('/auth');
+    navigate('/login');
     setShowDropdown(false);
   };
 
@@ -218,6 +250,18 @@ const Header = ({ onMenuToggle }) => {
       .slice(0, 2);
   };
 
+  // Close dropdown when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showDropdown && !event.target.closest('header')) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showDropdown]);
+
   return (
     <HeaderContainer>
       <LeftSection>
@@ -226,7 +270,7 @@ const Header = ({ onMenuToggle }) => {
         </MenuButton>
         <Logo>
           <FaShieldAlt className="logo-icon" />
-          Secure Print Link
+          <span className="logo-text">Secure Print Link</span>
         </Logo>
       </LeftSection>
 

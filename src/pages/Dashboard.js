@@ -3,16 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { useAuth } from '../context/AuthContext';
 import { usePrintJob } from '../context/PrintJobContext';
-import { 
-  FaPrint, 
-  FaChartBar, 
-  FaCog, 
-  FaServer,
-  FaFileAlt,
-  FaClock,
-  FaCheckCircle,
-  FaExclamationTriangle
-} from 'react-icons/fa';
+import { FaPrint, FaFileAlt, FaServer, FaChartBar, FaCog, FaClock, FaCheckCircle, FaExclamationTriangle, FaList } from 'react-icons/fa';
+import EmptyState from '../components/EmptyState';
 
 const DashboardContainer = styled.div`
   padding: 20px;
@@ -53,41 +45,30 @@ const StatCard = styled.div`
     transform: translateY(-2px);
   }
   
-  .stat-header {
+  .stat-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 12px;
+    background: ${props => props.color || '#3498db'}20;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    margin-bottom: 15px;
-    
-    .stat-icon {
-      width: 50px;
-      height: 50px;
-      border-radius: 12px;
-      background: ${props => props.color || '#3498db'}20;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: ${props => props.color || '#3498db'};
-      font-size: 24px;
+    justify-content: center;
+    color: ${props => props.color || '#3498db'};
+    font-size: 24px;
+  }
+  
+  .stat-info {
+    .stat-value {
+      font-size: 32px;
+      font-weight: bold;
+      color: #2c3e50;
+      margin-bottom: 8px;
     }
     
-    .stat-trend {
+    .stat-label {
+      color: #7f8c8d;
       font-size: 14px;
-      color: #27ae60;
-      font-weight: 500;
     }
-  }
-  
-  .stat-value {
-    font-size: 32px;
-    font-weight: bold;
-    color: #2c3e50;
-    margin-bottom: 8px;
-  }
-  
-  .stat-label {
-    color: #7f8c8d;
-    font-size: 14px;
   }
 `;
 
@@ -317,21 +298,30 @@ const ChartPlaceholder = styled.div`
 
 const Dashboard = () => {
   const { currentUser } = useAuth();
-  const { printJobs, printers, getJobStatistics } = usePrintJob();
+  const { printJobs, getJobStatistics } = usePrintJob();
   const navigate = useNavigate();
-  const [stats, setStats] = useState({});
+  const [userJobs, setUserJobs] = useState([]);
+  const [stats, setStats] = useState({
+    total: 0,
+    pending: 0,
+    released: 0,
+    completed: 0,
+    cancelled: 0,
+    viewed: 0,
+    expired: 0
+  });
 
+  // Filter user's jobs and calculate statistics
   useEffect(() => {
-    const jobStats = getJobStatistics();
-    setStats(jobStats);
-  }, [printJobs, getJobStatistics]);
-
-  const recentJobs = printJobs
-    .filter(job => job.userId === currentUser?.id)
-    .slice(0, 5);
-
-  const onlinePrinters = printers.filter(printer => printer.status === 'online');
-  const offlinePrinters = printers.filter(printer => printer.status === 'offline');
+    if (printJobs && currentUser?.id) {
+      const userJobs = printJobs.filter(job => job.userId === currentUser.id);
+      setUserJobs(userJobs);
+      
+      // Calculate real-time statistics from the same data source
+      const jobStats = getJobStatistics(currentUser.id);
+      setStats(jobStats);
+    }
+  }, [printJobs, currentUser, getJobStatistics]);
 
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -345,53 +335,69 @@ const Dashboard = () => {
   return (
     <DashboardContainer>
       <PageHeader>
-        <h1>Welcome back, {currentUser?.name}!</h1>
-        <p>Here's what's happening with your secure print jobs today.</p>
+        <h1>Dashboard</h1>
+        <p>Welcome back, {currentUser?.name}! Here's what's happening with your print jobs.</p>
       </PageHeader>
 
       <StatsGrid>
-        <StatCard color="#3498db">
-          <div className="stat-header">
-            <div className="stat-icon">
-              <FaPrint />
-            </div>
-            <div className="stat-trend">+12%</div>
+        <StatCard>
+          <div className="stat-icon total">
+            <FaFileAlt />
           </div>
-          <div className="stat-value">{stats.total || 0}</div>
-          <div className="stat-label">Total Print Jobs</div>
+          <div className="stat-info">
+            <div className="stat-value">{stats.total}</div>
+            <div className="stat-label">Total Jobs</div>
+          </div>
         </StatCard>
 
-        <StatCard color="#f39c12">
-          <div className="stat-header">
-            <div className="stat-icon">
-              <FaClock />
-            </div>
-            <div className="stat-trend">+5%</div>
+        <StatCard>
+          <div className="stat-icon pending">
+            <FaClock />
           </div>
-          <div className="stat-value">{stats.pending || 0}</div>
-          <div className="stat-label">Pending Jobs</div>
+          <div className="stat-info">
+            <div className="stat-value">{stats.pending}</div>
+            <div className="stat-label">Pending</div>
+          </div>
         </StatCard>
 
-        <StatCard color="#27ae60">
-          <div className="stat-header">
-            <div className="stat-icon">
-              <FaCheckCircle />
-            </div>
-            <div className="stat-trend">+8%</div>
+        <StatCard>
+          <div className="stat-icon released">
+            <FaPrint />
           </div>
-          <div className="stat-value">{stats.completed || 0}</div>
-          <div className="stat-label">Completed Jobs</div>
+          <div className="stat-info">
+            <div className="stat-value">{stats.released}</div>
+            <div className="stat-label">Released</div>
+          </div>
         </StatCard>
 
-        <StatCard color="#e74c3c">
-          <div className="stat-header">
-            <div className="stat-icon">
-              <FaExclamationTriangle />
-            </div>
-            <div className="stat-trend">+15%</div>
+        <StatCard>
+          <div className="stat-icon completed">
+            <FaCheckCircle />
           </div>
-          <div className="stat-value">${stats.totalCost || '0.00'}</div>
-          <div className="stat-label">Total Cost</div>
+          <div className="stat-info">
+            <div className="stat-value">{stats.completed}</div>
+            <div className="stat-label">Completed</div>
+          </div>
+        </StatCard>
+
+        <StatCard>
+          <div className="stat-icon viewed">
+            <FaEye />
+          </div>
+          <div className="stat-info">
+            <div className="stat-value">{stats.viewed}</div>
+            <div className="stat-label">Viewed</div>
+          </div>
+        </StatCard>
+
+        <StatCard>
+          <div className="stat-icon expired">
+            <FaExclamationTriangle />
+          </div>
+          <div className="stat-info">
+            <div className="stat-value">{stats.expired}</div>
+            <div className="stat-label">Expired</div>
+          </div>
         </StatCard>
       </StatsGrid>
 
@@ -400,11 +406,11 @@ const Dashboard = () => {
           <Section>
             <div className="section-header">
               <h2>Recent Print Jobs</h2>
-              <a href="/job-queue" className="view-all">View All</a>
+              <a href="/print-job-queue" className="view-all">View All</a>
             </div>
             <JobList>
-              {recentJobs.length > 0 ? (
-                recentJobs.map(job => (
+              {userJobs.length > 0 ? (
+                userJobs.slice(0, 5).map((job) => (
                   <JobItem key={job.id}>
                     <div className="job-info">
                       <div className="job-icon">
@@ -423,9 +429,12 @@ const Dashboard = () => {
                   </JobItem>
                 ))
               ) : (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#7f8c8d' }}>
-                  No print jobs yet. Submit your first job to get started!
-                </div>
+                <EmptyState 
+                  type="jobs" 
+                  action={() => navigate('/submit-job')}
+                  actionText="Submit Print Job"
+                  onAction={() => navigate('/submit-job')}
+                />
               )}
             </JobList>
           </Section>
@@ -436,7 +445,7 @@ const Dashboard = () => {
               <a href="/printers" className="view-all">Manage Printers</a>
             </div>
             <PrinterGrid>
-              {printers.map(printer => (
+              {printJobs.map(printer => (
                 <PrinterCard key={printer.id} status={printer.status}>
                   <div className="printer-icon">
                     <FaServer />
@@ -464,7 +473,7 @@ const Dashboard = () => {
           </Section>
         </MainContent>
 
-        <div>
+        <SidebarContent>
           <Section>
             <div className="section-header">
               <h2>Quick Actions</h2>
@@ -535,7 +544,7 @@ const Dashboard = () => {
               </div>
             </div>
           </Section>
-        </div>
+        </SidebarContent>
       </ContentGrid>
     </DashboardContainer>
   );

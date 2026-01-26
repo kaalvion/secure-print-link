@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import CryptoJS from 'crypto-js';
-import { api } from '../api/client';
+import React, { createContext, useState, useContext, useEffect } from 'react';
+import api from '../api/client';
+import { toast } from 'react-toastify';
 
 const PrintJobContext = createContext();
 
@@ -16,103 +16,70 @@ export const PrintJobProvider = ({ children }) => {
   const [printJobs, setPrintJobs] = useState([]);
   const [printers, setPrinters] = useState([]);
   const [loading, setLoading] = useState(false);
-  // In-memory storage for expiration metadata (client-side fallback)
-  // SECURITY MODEL: Multi-use links within time window (matches server behavior)
   const [expirationMetadata, setExpirationMetadata] = useState(new Map());
-  // REMOVED: usedTokens - no longer needed for multi-use design
 
+  // Load initial data
   useEffect(() => {
-    // Mock printers for demonstration
-    const mockPrinters = [
-      {
-        id: 1,
-        name: 'Main Office Printer',
-        location: 'Main Office - Floor 1',
-        model: 'HP LaserJet Pro M404n',
-        status: 'online',
-        ip: '192.168.1.100',
-        capabilities: ['color', 'duplex', 'stapling'],
-        department: 'All'
-      },
-      {
-        id: 2,
-        name: 'Sales Department Printer',
-        location: 'Sales Office - Floor 2',
-        model: 'Canon imageRUNNER ADVANCE C3530',
-        status: 'online',
-        ip: '192.168.1.101',
-        capabilities: ['color', 'duplex', 'scanning'],
-        department: 'Sales'
-      },
-      {
-        id: 3,
-        name: 'Marketing Printer',
-        location: 'Marketing Office - Floor 3',
-        model: 'Xerox WorkCentre 6515',
-        status: 'offline',
-        ip: '192.168.1.102',
-        capabilities: ['color', 'duplex', 'scanning', 'fax'],
-        department: 'Marketing'
-      }
-    ];
-
-    // Load mock data
-    setPrinters(mockPrinters);
-    
-    // Load stored print jobs
-    const storedJobs = localStorage.getItem('securePrintJobs');
-    if (storedJobs) {
+    const loadInitialData = async () => {
       try {
-        setPrintJobs(JSON.parse(storedJobs));
+        const jobsResponse = await api.get('/api/jobs');
+        if (jobsResponse.data.success) {
+          setPrintJobs(jobsResponse.data.jobs || []);
+        }
+        
+        const printersResponse = await api.get('/api/printers');
+        if (printersResponse.data.success) {
+          setPrinters(printersResponse.data.printers || []);
+        }
       } catch (error) {
-        console.error('Error loading stored print jobs:', error);
+        console.error('Error loading initial data:', error);
+        toast.error('Failed to load data');
       }
-    }
+    };
+
+    loadInitialData();
   }, []);
 
-  // Cleanup loop: Periodically scan for expired jobs and delete them
+  // Cleanup expired jobs every minute (server-side cleanup is authoritative)
   useEffect(() => {
     const cleanupInterval = setInterval(() => {
       const currentServerTime = Date.now();
-      
-      // Find expired jobs
       const expiredJobIds = [];
+      
       expirationMetadata.forEach((metadata, jobId) => {
         if (currentServerTime >= metadata.expiresAt) {
           expiredJobIds.push(jobId);
         }
       });
       
-      // Clean up expired jobs
       if (expiredJobIds.length > 0) {
-        console.log(`Cleaning up ${expiredJobIds.length} expired print job(s)`);
+        setPrintJobs(prevJobs => 
+          prevJobs.map(job => {
+            if (expiredJobIds.includes(job.id)) {
+              return {
+                ...job,
+                status: 'deleted',
+                document: null, // Delete document data
+                expiredAt: new Date().toISOString()
+              };
+            }
+            return job;
+          })
+        );
         
-        // Remove from expiration metadata
+        // Remove expired metadata
         setExpirationMetadata(prev => {
           const newMap = new Map(prev);
           expiredJobIds.forEach(id => newMap.delete(id));
           return newMap;
         });
-        
-        // Remove document data and mark as expired
-        setPrintJobs(prev => prev.map(job => {
-          if (expiredJobIds.includes(job.id)) {
-            return {
-              ...job,
-              status: 'expired',
-              document: null, // Delete document data
-              expiredAt: new Date().toISOString()
-            };
-          }
-          return job;
-        }));
       }
     }, 60000); // Run every minute
     
     return () => clearInterval(cleanupInterval);
   }, [expirationMetadata]);
 
-  // Save print jobs to localStorage whenever they change
+  // Save print jobs to localStorage whenever they change (for offline access)
   useEffect(() => {
     try {
       const jobsJson = JSON.stringify(printJobs);
@@ -174,252 +141,189 @@ export const PrintJobProvider = ({ children }) => {
           
           // Convert server response to client format
           const newJob = {
-            ...serverJob,
-            encrypted: true,
-            // For client-side display, we still need document data URL
-            document: jobData.file ? await convertFileToDataUrl(jobData.file) : null
+            id: serverJob.id,
+            userId: serverJob.userId,
+            documentName: serverJob.documentName,
+            pages: serverJob.pages,
+            copies: serverJob.copies,
+            color: serverJob.color,
+            duplex: serverJob.duplex,
+            stapling: serverJob.stapling,
+            priority: serverJob.priority,
+            notes: serverJob.notes,
+            status: serverJob.status,
+            cost: serverJob.cost,
+            submittedAt: serverJob.submittedAt,
+            secureToken: serverJob.secureToken,
+            releaseLink: serverJob.releaseLink,
+            expiresAt: serverJob.expiresAt,
+            expirationDuration: serverJob.expirationDuration,
+            document: serverJob.file ? {
+              filename: serverJob.file.filename,
+              originalname: serverJob.file.originalname,
+              mimetype: serverJob.file.mimetype,
+              size: serverJob.file.size
+            } : null,
+            viewCount: 0, // Initialize view count
+            firstViewedAt: null,
+            lastViewedAt: null
           };
 
           setPrintJobs(prev => [newJob, ...prev]);
-          return { success: true, job: newJob };
+          
+          // Store expiration metadata in memory
+          const expiresAt = new Date(serverJob.expiresAt).getTime();
+          setExpirationMetadata(prev => {
+            const newMap = new Map(prev);
+            newMap.set(serverJob.id, {
+              expiresAt,
+              createdAt: Date.now(),
+              token: serverJob.secureToken,
+              viewCount: 0,
+              firstViewedAt: null,
+              filePath: null
+            });
+            return newMap;
+          });
+
+          return newJob;
         }
-      } catch (apiError) {
-        // API not available - fallback to client-side (temporary)
-        console.warn('Server API not available, using client-side fallback:', apiError.message);
-        return await submitPrintJobClientSide(jobData);
+      } catch (serverError) {
+        console.error('Server submission failed:', serverError);
+        throw serverError;
       }
-    } catch (err) {
-      console.error(err);
+    } catch (error) {
+      console.error('Error submitting print job:', error);
+      if (error.response?.data?.error) {
+        throw new Error(error.response.data.error);
+      }
       throw new Error('Failed to submit print job');
     } finally {
       setLoading(false);
     }
   };
 
-  // Helper: Convert file to data URL
-  const convertFileToDataUrl = async (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const fileName = file.name.toLowerCase();
-        let mimeType = file.type;
-        
-        // Detect MIME type from extension if needed
-        if (!mimeType || mimeType === 'application/octet-stream') {
-          if (fileName.endsWith('.pdf')) mimeType = 'application/pdf';
-          else if (fileName.endsWith('.doc')) mimeType = 'application/msword';
-          else if (fileName.endsWith('.docx')) mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-          else if (fileName.endsWith('.xls')) mimeType = 'application/vnd.ms-excel';
-          else if (fileName.endsWith('.xlsx')) mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-          else if (fileName.endsWith('.ppt')) mimeType = 'application/vnd.ms-powerpoint';
-          else if (fileName.endsWith('.pptx')) mimeType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-          else if (fileName.endsWith('.txt')) mimeType = 'text/plain';
-          else if (fileName.endsWith('.csv')) mimeType = 'text/csv';
-          else if (/\.(jpg|jpeg|png|gif|bmp|webp|svg)$/.test(fileName)) mimeType = 'image/jpeg';
-          else mimeType = 'application/octet-stream';
-        }
-        
-        resolve({
-          dataUrl: reader.result,
-          mimeType,
-          name: file.name
-        });
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+  const getJobById = async (jobId) => {
+    try {
+      const response = await api.get(`/api/jobs/${jobId}`);
+      if (response.data.job) {
+        return response.data.job;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error fetching job:', error);
+      return null;
+    }
   };
 
-  // Client-side fallback (temporary - only used when API unavailable)
-  const submitPrintJobClientSide = async (jobData) => {
-    const jobId = String(Date.now());
-    const secureToken = CryptoJS.lib.WordArray.random(32).toString();
-    const expirationDuration = jobData.expirationDuration || 15;
-    const currentServerTime = Date.now();
-    const expiresAt = currentServerTime + (expirationDuration * 60 * 1000);
-    
-    // Store expiration metadata in memory (client-side fallback)
-    // Multi-use design: Track release count instead of "used" flag
-    setExpirationMetadata(prev => {
-      const newMap = new Map(prev);
-      newMap.set(jobId, {
-        expiresAt,
-        createdAt: currentServerTime,
-        token: secureToken,
-        releaseCount: 0 // Track releases for auditing
-      });
-      return newMap;
-    });
-    
-    const releaseLinkBase = typeof window !== 'undefined' && window.location && window.location.origin
-      ? window.location.origin
-      : '';
-    const releaseLink = `${releaseLinkBase}/release/${jobId}?token=${secureToken}`;
-
-    const document = jobData.file ? await convertFileToDataUrl(jobData.file) : null;
-
-    const newJob = {
-      id: jobId,
-      userId: jobData.userId,
-      userName: jobData.userName,
-      documentName: jobData.documentName,
-      pages: jobData.pages,
-      copies: jobData.copies,
-      color: jobData.color,
-      duplex: jobData.duplex,
-      stapling: jobData.stapling,
-      priority: jobData.priority,
-      notes: jobData.notes,
-      status: 'pending',
-      cost: parseFloat(calculateJobCost(jobData)),
-      submittedAt: new Date().toISOString(),
-      printerId: null,
-      releasedBy: null,
-      secureToken,
-      releaseLink,
-      encrypted: true,
-      expiresAt: new Date(expiresAt).toISOString(),
-      expirationDuration,
-      document
-    };
-
-    setPrintJobs(prev => [newJob, ...prev]);
-    return { success: true, job: newJob };
-  };
-
-  const releasePrintJob = async (jobId, printerId, userId, token) => {
+  const viewPrintJob = async (jobId, token, userId) => {
     setLoading(true);
     try {
-      // Try to use server API first (permanent fix)
-      try {
-        const response = await api.post(`/api/jobs/${jobId}/release`, {
-          token,
-          printerId,
-          releasedBy: userId
+      const response = await api.post(`/api/jobs/${jobId}/view`, {
+        token,
+        userId
+      });
+
+      if (response.data.success) {
+        // Update job in state
+        setPrintJobs(prev => prev.map(job => 
+          job.id === jobId 
+            ? { 
+                ...job, 
+                viewCount: response.data.viewCount,
+                firstViewedAt: response.data.firstViewedAt,
+                document: response.data.document
+              }
+            : job
+        ));
+
+        // Update expiration metadata
+        setExpirationMetadata(prev => {
+          const newMap = new Map(prev);
+          const metadata = newMap.get(jobId);
+          if (metadata) {
+            newMap.set(jobId, {
+              ...metadata,
+              viewCount: response.data.viewCount,
+              firstViewedAt: response.data.firstViewedAt
+            });
+          }
+          return newMap;
         });
 
-        if (response.data.success) {
-          // MULTI-USE: Do NOT change status to 'printing' or 'completed'
-          // Keep job available for re-release within time window
-          // Only update metadata (last release time, printer, user)
-          setPrintJobs(prev => prev.map(job =>
-            job.id === jobId
-              ? { ...job, releasedAt: new Date().toISOString(), printerId, releasedBy: userId }
-              : job
-          ));
-          
-          // DO NOT delete document or change status - allow multi-use
-          // Server tracks release count for auditing
-          
-          return { success: true, releaseCount: response.data.releaseCount };
-        }
-      } catch (apiError) {
-        // Check for specific error types
-        if (apiError.response?.status === 403) {
-          const errorMsg = apiError.response.data?.error || '';
-          // Re-throw with original message for proper handling
-          throw new Error(errorMsg || 'Access denied');
-        }
-        // API not available - fallback to client-side validation
-        console.warn('Server API not available, using client-side fallback:', apiError.message);
-        return await releasePrintJobClientSide(jobId, printerId, userId, token);
+        toast.success(response.data.message);
+        return response.data.document;
       }
-    } catch (err) {
-      console.error(err);
-      throw err; // Re-throw original error with message intact
+    } catch (error) {
+      console.error('Error viewing job:', error);
+      if (error.response?.data?.alreadyViewed) {
+        toast.error('Document already viewed (one-time only)');
+        // Update state to reflect this
+        setPrintJobs(prev => prev.map(job => 
+          job.id === jobId 
+            ? { ...job, viewCount: error.response.data.viewCount || 1 }
+            : job
+        ));
+        throw new Error('Document already viewed');
+      } else if (error.response?.data?.error) {
+        throw new Error(error.response.data.error);
+      }
+      throw new Error('Failed to view document');
     } finally {
       setLoading(false);
     }
   };
 
-  // Client-side fallback (temporary - only used when API unavailable)
-  // SECURITY MODEL: Multi-use release within time window
-  const releasePrintJobClientSide = async (jobId, printerId, userId, token) => {
-    const currentServerTime = Date.now();
-    let metadata = expirationMetadata.get(jobId);
-    
-    // Fallback: If metadata is missing (e.g. page refresh), try to reconstruct it from printJobs
-    if (!metadata) {
-      const existingJob = printJobs.find(j => j.id === jobId);
-      if (existingJob && existingJob.secureToken === token && existingJob.expiresAt) {
-        // Reconstruct metadata from job info - multi-use design
-        metadata = {
-          expiresAt: new Date(existingJob.expiresAt).getTime(),
-          token: existingJob.secureToken,
-          releaseCount: 0 // Reset count on reconstruct
-        };
-        // Restore to in-memory map
-        setExpirationMetadata(prev => new Map(prev).set(jobId, metadata));
-      }
-    }
-
-    if (!metadata) {
-      throw new Error('Print job not found or expired');
-    }
-    
-    // MULTI-USE: Do NOT check if token was used before
-    // Only verify token correctness and expiration
-    
-    if (metadata.token !== token) {
-      throw new Error('Invalid token');
-    }
-    
-    if (currentServerTime >= metadata.expiresAt) {
-      setExpirationMetadata(prev => {
-        const newMap = new Map(prev);
-        newMap.delete(jobId);
-        return newMap;
+  const releasePrintJob = async (jobId, printerId, releasedBy, token) => {
+    setLoading(true);
+    try {
+      const response = await api.post(`/api/jobs/${jobId}/release`, {
+        token,
+        printerId,
+        releasedBy
       });
-      throw new Error('Print link has expired');
-    }
-    
-    const targetJob = printJobs.find(j => j.id === jobId);
-    if (!targetJob || (targetJob.secureToken && targetJob.secureToken !== token)) {
-      throw new Error('Invalid release token');
-    }
-    
-    // Track release count for auditing
-    setExpirationMetadata(prev => {
-      const newMap = new Map(prev);
-      const meta = newMap.get(jobId);
-      if (meta) {
-        meta.releaseCount = (meta.releaseCount || 0) + 1;
-        newMap.set(jobId, meta);
-      }
-      return newMap;
-    });
 
-    // MULTI-USE: Do NOT change status - keep job available for re-release
-    // Only update metadata (last release time, printer, user)
-    setPrintJobs(prev => prev.map(job =>
-      job.id === jobId
-        ? { ...job, releasedAt: new Date().toISOString(), printerId, releasedBy: userId }
-        : job
-    ));
-    
-    // DO NOT delete document or change status - allow multiple releases
-    // Documents are deleted ONLY on expiration (cleanup loop)
-    
-    return { success: true, releaseCount: metadata.releaseCount };
+      if (response.data.success) {
+        // Update job status
+        setPrintJobs(prev => prev.map(job => 
+          job.id === jobId 
+            ? { ...job, status: 'released', releasedAt: new Date().toISOString() }
+            : job
+        ));
+
+        toast.success(response.data.message);
+        return response.data;
+      }
+    } catch (error) {
+      console.error('Error releasing job:', error);
+      if (error.response?.data?.error) {
+        throw new Error(error.response.data.error);
+      }
+      throw new Error('Failed to release print job');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const cancelPrintJob = async (jobId) => {
     setLoading(true);
-    
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      setPrintJobs(prev => 
-        prev.map(job => 
-          job.id === jobId 
-            ? { ...job, status: 'cancelled', cancelledAt: new Date().toISOString() }
-            : job
-        )
-      );
-      
-      return { success: true };
+      const job = printJobs.find(j => j.id === jobId);
+      if (!job) {
+        throw new Error('Job not found');
+      }
+
+      // Update status locally first
+      setPrintJobs(prev => prev.map(job => 
+        job.id === jobId 
+          ? { ...job, status: 'cancelled', cancelledAt: new Date().toISOString() }
+          : job
+      ));
+
+      toast.success('Print job cancelled successfully');
     } catch (error) {
-      throw new Error('Failed to cancel print job');
+      console.error('Error cancelling job:', error);
+      throw error;
     } finally {
       setLoading(false);
     }
@@ -427,15 +331,21 @@ export const PrintJobProvider = ({ children }) => {
 
   const deletePrintJob = async (jobId) => {
     setLoading(true);
-    
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
+      // Remove from local state
       setPrintJobs(prev => prev.filter(job => job.id !== jobId));
       
-      return { success: true };
+      // Remove from expiration metadata
+      setExpirationMetadata(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(jobId);
+        return newMap;
+      });
+
+      toast.success('Print job deleted successfully');
     } catch (error) {
-      throw new Error('Failed to delete print job');
+      console.error('Error deleting job:', error);
+      throw error;
     } finally {
       setLoading(false);
     }
@@ -453,59 +363,43 @@ export const PrintJobProvider = ({ children }) => {
     return printJobs.filter(job => job.printerId === printerId);
   };
 
-  const calculateJobCost = (jobData) => {
-    const baseCost = 0.10; // $0.10 per page
-    const colorMultiplier = jobData.color ? 2 : 1;
-    const duplexMultiplier = jobData.duplex ? 0.8 : 1;
-    
-    return (baseCost * jobData.pages * jobData.copies * colorMultiplier * duplexMultiplier).toFixed(2);
-  };
-
-  const getJobStatistics = () => {
-    const total = printJobs.length;
-    const pending = printJobs.filter(job => job.status === 'pending').length;
-    const printing = printJobs.filter(job => job.status === 'printing').length;
-    const completed = printJobs.filter(job => job.status === 'completed').length;
-    const cancelled = printJobs.filter(job => job.status === 'cancelled').length;
-    
-    const totalCost = printJobs
-      .filter(job => job.status === 'completed')
-      .reduce((sum, job) => sum + parseFloat(job.cost), 0);
+  const getJobStatistics = (userId) => {
+    const userJobs = userId ? getJobsByUser(userId) : printJobs;
     
     return {
-      total,
-      pending,
-      printing,
-      completed,
-      cancelled,
-      totalCost: totalCost.toFixed(2)
+      total: userJobs.length,
+      pending: userJobs.filter(job => job.status === 'pending').length,
+      released: userJobs.filter(job => job.status === 'released').length,
+      completed: userJobs.filter(job => job.status === 'completed').length,
+      cancelled: userJobs.filter(job => job.status === 'cancelled').length,
+      deleted: userJobs.filter(job => job.status === 'deleted').length,
+      viewed: userJobs.filter(job => job.viewCount > 0).length,
+      expired: userJobs.filter(job => job.status === 'deleted' || (job.expiresAt && new Date(job.expiresAt) < new Date())).length
     };
   };
 
-  const addPrinter = (printerData) => {
-    const newPrinter = {
-      id: Date.now(),
-      ...printerData,
-      status: 'online'
-    };
-    setPrinters(prev => [...prev, newPrinter]);
-    return newPrinter;
+  const addPrinter = async (printerData) => {
+    // Implementation for adding printer
+    console.log('Add printer:', printerData);
   };
 
-  const updatePrinter = (printerId, updates) => {
-    setPrinters(prev => 
-      prev.map(printer => 
-        printer.id === printerId ? { ...printer, ...updates } : printer
-      )
-    );
+  const updatePrinter = async (printerId, printerData) => {
+    // Implementation for updating printer
+    console.log('Update printer:', printerId, printerData);
   };
 
-  const deletePrinter = (printerId) => {
-    setPrinters(prev => prev.filter(printer => printer.id !== printerId));
+  const deletePrinter = async (printerId) => {
+    // Implementation for deleting printer
+    console.log('Delete printer:', printerId);
   };
 
-  // Validate token and expiration (for use in PrintRelease)
-  // MULTI-USE: Only check token correctness and expiration, NOT if it was used
+  const calculateJobCost = (jobData) => {
+    const baseCost = 0.10;
+    const colorMultiplier = jobData.color ? 2 : 1;
+    const duplexMultiplier = jobData.duplex ? 0.8 : 1;
+    return +(baseCost * jobData.pages * jobData.copies * colorMultiplier * duplexMultiplier).toFixed(2);
+  };
+
   const validateTokenAndExpiration = (jobId, token) => {
     const currentServerTime = Date.now();
     const metadata = expirationMetadata.get(jobId);
@@ -513,8 +407,6 @@ export const PrintJobProvider = ({ children }) => {
     if (!metadata) {
       return { valid: false, error: 'Print job not found or expired' };
     }
-    
-    // MULTI-USE: Do NOT check if token was used
     
     if (metadata.token !== token) {
       return { valid: false, error: 'Invalid token' };
@@ -532,6 +424,8 @@ export const PrintJobProvider = ({ children }) => {
     printers,
     loading,
     submitPrintJob,
+    getJobById,
+    viewPrintJob,
     releasePrintJob,
     cancelPrintJob,
     deletePrintJob,

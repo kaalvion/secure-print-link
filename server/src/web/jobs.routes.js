@@ -13,14 +13,15 @@ const upload = multer({ dest: uploadsDir, limits: { fileSize: +(process.env.MAX_
 const router = Router();
 
 // In-memory storage for expiration metadata (server memory - lost on restart by design)
-// SECURITY MODEL: Multi-use links within time window, NOT single-use
-// - Links are usable MULTIPLE times until expiration
-// - Each release is authenticated but does NOT invalidate the link
-// - Only expiration time invalidates the link
-const expirationMetadata = new Map(); // jobId -> { expiresAt, createdAt, token, releaseCount }
+// SECURITY MODEL: Single-use view enforcement
+// - SUBMITTED → PENDING → (VIEW once) → RELEASED → DELETED
+// - View allowed only once per job
+// - After viewing, button permanently disabled
+// - Files deleted only on expiration or manual deletion
+const expirationMetadata = new Map(); // jobId -> { expiresAt, createdAt, token, viewCount, firstViewedAt }
 let dbInstance = null;
 
-// Cleanup loop: Periodically scan for expired jobs
+// Cleanup loop: Periodically scan for expired jobs and clean up
 setInterval(() => {
   const currentServerTime = Date.now();
   const expiredJobIds = [];
@@ -53,17 +54,17 @@ setInterval(() => {
       // Delete from DB (will cascade to documents and analysis)
       if (dbInstance) {
         try {
-          dbInstance.prepare('DELETE FROM jobs WHERE id = ?').run(jobId);
-          console.log(`[Cleanup] Deleted job from DB: ${jobId}`);
+          dbInstance.prepare('UPDATE jobs SET status = ?, deletedAt = ? WHERE id = ?')
+            .run('deleted', new Date().toISOString(), jobId);
+          console.log(`[Cleanup] Marked job as deleted in DB: ${jobId}`);
         } catch (err) {
-          console.error(`[Cleanup] Error deleting job from DB ${jobId}:`, err);
+          console.error(`[Cleanup] Error updating job in DB ${jobId}:`, err);
         }
       }
     });
   }
 }, 60000); // Run every minute
 
-// Create job
 // Create job (multipart/form-data supported)
 router.post('/', upload.single('file'), (req, res) => {
   const db = req.db;
@@ -80,7 +81,7 @@ router.post('/', upload.single('file'), (req, res) => {
   const priority = body.priority || 'normal';
   const notes = body.notes || '';
 
-  if (!userId || !documentName) return res.status(400).json({ error: 'Missing fields' });
+  if (!userId || !documentName) return res.status(400).json({ error: 'Missing required fields' });
 
   const id = nanoid();
   const secureToken = nanoid(32);
@@ -91,13 +92,14 @@ router.post('/', upload.single('file'), (req, res) => {
   const expiresAt = currentServerTime + (expirationDuration * 60 * 1000); // Convert minutes to milliseconds
   
   // Store expiration metadata in server memory
-  // Multi-use design: Track release count instead of "used" flag
+  // Single-use view design: Track view count and first view time
   expirationMetadata.set(id, {
     expiresAt,
     createdAt: currentServerTime,
     token: secureToken,
-    releaseCount: 0, // Track how many times this link has been used (for logging/auditing)
-    filePath: req.file?.path || null, // Store file path - deleted ONLY on expiration
+    viewCount: 0,
+    firstViewedAt: null,
+    filePath: req.file?.path || null,
     mimetype: req.file?.mimetype,
     originalname: req.file?.originalname
   });
@@ -118,9 +120,9 @@ router.post('/', upload.single('file'), (req, res) => {
 
   const stmt = db.prepare(`INSERT INTO jobs (
     id, userId, documentName, pages, copies, color, duplex, stapling, priority, notes,
-    status, cost, submittedAt, secureToken, releaseLink, expiresAt
+    status, cost, submittedAt, secureToken, releaseLink, expiresAt, viewCount
   ) VALUES (@id, @userId, @documentName, @pages, @copies, @color, @duplex, @stapling, @priority, @notes,
-    'pending', @cost, @submittedAt, @secureToken, @releaseLink, @expiresAt)`);
+    'pending', @cost, @submittedAt, @secureToken, @releaseLink, @expiresAt, 0)`);
 
   stmt.run({
     id, userId, documentName, pages, copies,
@@ -177,7 +179,7 @@ router.post('/', upload.single('file'), (req, res) => {
   });
 });
 
-// Get job by id + token
+// Get job by id + token (with single-view enforcement)
 router.get('/:id', (req, res) => {
   const db = req.db;
   const { id } = req.params;
@@ -188,9 +190,6 @@ router.get('/:id', (req, res) => {
   const metadata = expirationMetadata.get(id);
   
   if (metadata) {
-    // SECURITY: Multi-use validation - check token and expiration ONLY
-    // Do NOT check if token was used before (multi-use design)
-    
     // Verify token matches
     if (metadata.token !== token) {
       return res.status(403).json({ error: 'Invalid token' });
@@ -203,7 +202,7 @@ router.get('/:id', (req, res) => {
       if (metadata.filePath) {
         try {
           if (fs.existsSync(metadata.filePath)) {
-            fs.unlinkSync(metadata.filePath); // Delete file
+            fs.unlinkSync(metadata.filePath);
             console.log(`[Expired] Deleted file: ${metadata.filePath}`);
           }
         } catch (err) {
@@ -215,8 +214,17 @@ router.get('/:id', (req, res) => {
   }
   
   const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
-  if (!job) return res.status(404).json({ error: 'Not found' });
+  if (!job) return res.status(404).json({ error: 'Job not found' });
   if (token && token !== job.secureToken) return res.status(403).json({ error: 'Invalid token' });
+
+  // Check if job has been viewed already (single-view enforcement)
+  if (job.viewCount > 0) {
+    return res.status(403).json({ 
+      error: 'Document already viewed (one-time only)',
+      alreadyViewed: true,
+      viewCount: job.viewCount
+    });
+  }
 
   // Fetch document from DB if available
   try {
@@ -258,25 +266,17 @@ router.get('/:id', (req, res) => {
   res.json({ job });
 });
 
-// Release job (requires token)
-// SECURITY MODEL: Multi-use release within time window
-// - Same link can be used multiple times until expiration
-// - Each release is authenticated and logged
-// - Job status does NOT prevent re-release (allows multiple prints)
-// - Files are NOT deleted after release (only on expiration)
-router.post('/:id/release', (req, res) => {
+// View job document (single-use only)
+router.post('/:id/view', (req, res) => {
   const db = req.db;
   const { id } = req.params;
-  const { token, printerId, releasedBy } = req.body || {};
+  const { token, userId } = req.body || {};
   
   // Validate token and expiration from server memory
   const currentServerTime = Date.now();
   const metadata = expirationMetadata.get(id);
   
   if (metadata) {
-    // SECURITY: Multi-use validation - NO "already used" check
-    // Only verify token correctness and expiration
-    
     // Verify token matches
     if (metadata.token !== token) {
       return res.status(403).json({ error: 'Invalid token' });
@@ -300,41 +300,202 @@ router.post('/:id/release', (req, res) => {
   }
   
   const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
-  if (!job) return res.status(404).json({ error: 'Not found' });
+  if (!job) return res.status(404).json({ error: 'Job not found' });
   if (!token || token !== job.secureToken) return res.status(403).json({ error: 'Invalid token' });
   
-  // MULTI-USE: Do NOT check job.status - allow re-release of completed jobs
-  // This enables printing the same job multiple times within the time window
-
-  // Track release count for auditing (optional)
-  if (metadata) {
-    metadata.releaseCount = (metadata.releaseCount || 0) + 1;
-    expirationMetadata.set(id, metadata);
-    console.log(`[Release] Job ${id} released ${metadata.releaseCount} time(s)`);
+  // SINGLE-USE ENFORCEMENT: Check if already viewed
+  if (job.viewCount > 0) {
+    return res.status(403).json({ 
+      error: 'Document already viewed (one-time only)',
+      alreadyViewed: true,
+      viewCount: job.viewCount
+    });
   }
 
-  // Update job metadata (last release time, printer, user) but keep status as 'pending'
-  // This allows the same job to be released multiple times
-  db.prepare('UPDATE jobs SET releasedAt = ?, printerId = ?, releasedBy = ? WHERE id = ?')
-    .run(new Date().toISOString(), printerId || null, releasedBy || null, id);
+  // Record the view
+  const now = new Date().toISOString();
+  const viewId = nanoid();
+  
+  // Update job view count and timestamps
+  db.prepare('UPDATE jobs SET viewCount = viewCount + 1, firstViewedAt = ?, lastViewedAt = ? WHERE id = ?')
+    .run(now, now, id);
+  
+  // Log the view for audit trail
+  db.prepare(`INSERT INTO job_views (id, jobId, userId, viewedAt, userAgent, ipAddress) 
+    VALUES (?, ?, ?, ?, ?, ?)`)
+    .run(
+      viewId, 
+      id, 
+      userId || 'anonymous', 
+      now, 
+      req.headers['user-agent'] || '', 
+      req.ip || req.connection.remoteAddress || ''
+    );
 
-  // DO NOT delete files after release - files are deleted ONLY on expiration
-  // DO NOT change status to 'completed' - keep job available for re-release
+  // Update in-memory metadata
+  if (metadata) {
+    metadata.viewCount = 1;
+    metadata.firstViewedAt = now;
+    expirationMetadata.set(id, metadata);
+    console.log(`[View] Job ${id} viewed for the first time by user ${userId}`);
+  }
 
-  res.json({ success: true, releaseCount: metadata?.releaseCount || 1 });
+  // Return document data for preview (NOT download)
+  let documentData = null;
+  try {
+    const document = db.prepare('SELECT * FROM documents WHERE jobId = ?').get(id);
+    if (document) {
+      const base64 = document.content.toString('base64');
+      documentData = {
+        dataUrl: `data:${document.mimeType};base64,${base64}`,
+        mimeType: document.mimeType,
+        name: document.filename,
+        size: document.size
+      };
+    } else if (metadata?.filePath && fs.existsSync(metadata.filePath)) {
+      const fileBuffer = fs.readFileSync(metadata.filePath);
+      const base64 = fileBuffer.toString('base64');
+      documentData = {
+        dataUrl: `data:${metadata.mimetype || 'application/octet-stream'};base64,${base64}`,
+        mimeType: metadata.mimetype,
+        name: metadata.originalname || job.documentName
+      };
+    }
+  } catch (err) {
+    console.error('Error fetching document for view:', err);
+  }
+
+  res.json({ 
+    success: true, 
+    document: documentData,
+    viewCount: 1,
+    firstViewedAt: now,
+    message: 'Document preview opened. This was a one-time view - the button is now permanently disabled.'
+  });
 });
 
-// Complete job (simulate)
+// Release job (requires token) - only possible AFTER viewing
+router.post('/:id/release', (req, res) => {
+  const db = req.db;
+  const { id } = req.params;
+  const { token, printerId, releasedBy } = req.body || {};
+  
+  // Validate token and expiration from server memory
+  const currentServerTime = Date.now();
+  const metadata = expirationMetadata.get(id);
+  
+  if (metadata) {
+    // Verify token matches
+    if (metadata.token !== token) {
+      return res.status(403).json({ error: 'Invalid token' });
+    }
+    
+    // Verify expiration (server time check)
+    if (currentServerTime >= metadata.expiresAt) {
+      // Expired - clean up
+      expirationMetadata.delete(id);
+      if (metadata.filePath) {
+        try {
+          if (fs.existsSync(metadata.filePath)) {
+            fs.unlinkSync(metadata.filePath);
+          }
+        } catch (err) {
+          console.error('Error deleting expired file:', err);
+        }
+      }
+      return res.status(403).json({ error: 'Print link has expired' });
+    }
+  }
+  
+  const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  if (!token || token !== job.secureToken) return res.status(403).json({ error: 'Invalid token' });
+  
+  // Check if job has been viewed (single-use view must occur before release)
+  if (job.viewCount === 0) {
+    return res.status(403).json({ 
+      error: 'Document must be viewed before releasing. Click the view button first.',
+      requiresView: true
+    });
+  }
+
+  // Update job status to released and track release metadata
+  db.prepare('UPDATE jobs SET status = ?, releasedAt = ?, printerId = ?, releasedBy = ? WHERE id = ?')
+    .run('released', new Date().toISOString(), printerId || null, releasedBy || null, id);
+
+  console.log(`[Release] Job ${id} released for printing on printer ${printerId} by user ${releasedBy}`);
+
+  // Update in-memory metadata
+  if (metadata) {
+    expirationMetadata.set(id, {
+      ...metadata,
+      status: 'released'
+    });
+  }
+
+  res.json({ 
+    success: true, 
+    message: 'Print job released successfully!',
+    status: 'released'
+  });
+});
+
+// Complete job (mark as completed)
 router.post('/:id/complete', (req, res) => {
   const db = req.db;
   const { id } = req.params;
+  
   const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
-  if (!job) return res.status(404).json({ error: 'Not found' });
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  
+  // Can only complete released jobs
+  if (job.status !== 'released') {
+    return res.status(400).json({ error: 'Job must be released before marking as completed' });
+  }
+  
   db.prepare('UPDATE jobs SET status = ?, completedAt = ? WHERE id = ?')
     .run('completed', new Date().toISOString(), id);
-  res.json({ success: true });
+
+  console.log(`[Complete] Job ${id} marked as completed`);
+  
+  res.json({ success: true, message: 'Job marked as completed' });
+});
+
+// Get all jobs (admin or filtered by user)
+router.get('/', (req, res) => {
+  const db = req.db;
+  const { userId } = req.query;
+  
+  let query = 'SELECT * FROM jobs';
+  let params = [];
+  
+  if (userId) {
+    query += ' WHERE userId = ?';
+    params.push(userId);
+  }
+  
+  query += ' ORDER BY submittedAt DESC';
+  
+  const jobs = db.prepare(query).all(params);
+  res.json({ jobs });
+});
+
+// Get expired jobs for cleanup verification
+router.get('/cleanup/expired', (req, res) => {
+  const currentServerTime = Date.now();
+  const expired = [];
+  
+  expirationMetadata.forEach((metadata, jobId) => {
+    if (currentServerTime >= metadata.expiresAt) {
+      expired.push({
+        id: jobId,
+        expiredAt: metadata.expiresAt,
+        originalToken: metadata.token.substring(0, 8) + '...' 
+      });
+    }
+  });
+  
+  res.json({ expired });
 });
 
 export default router;
-
-
