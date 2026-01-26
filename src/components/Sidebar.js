@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import styled from 'styled-components';
 import { useAuth } from '../context/AuthContext';
 import { 
@@ -316,7 +316,6 @@ const UserSection = styled.div`
 
 const Sidebar = ({ isOpen, onToggle }) => {
   const { currentUser } = useAuth();
-  const location = useLocation();
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
 

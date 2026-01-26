@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import api from '../api/client';
 import { toast } from 'react-toastify';
 
@@ -22,7 +22,7 @@ export const PrintJobProvider = ({ children }) => {
   const [expirationMetadata, setExpirationMetadata] = useState(new Map());
 
   // Helper to sync metadata from jobs
-  const syncMetadataFromJobs = (jobs) => {
+  const syncMetadataFromJobs = useCallback((jobs) => {
     setExpirationMetadata(prev => {
       const newMap = new Map(prev);
       jobs.forEach(job => {
@@ -36,7 +36,7 @@ export const PrintJobProvider = ({ children }) => {
       });
       return newMap;
     });
-  };
+  }, []);
 
   // Load initial data
   useEffect(() => {
@@ -100,7 +100,7 @@ export const PrintJobProvider = ({ children }) => {
     };
 
     loadInitialData();
-  }, []);
+  }, [printers.length, syncMetadataFromJobs]);
 
   // Cleanup expired jobs every minute (server-side cleanup is authoritative)
   useEffect(() => {

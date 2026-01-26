@@ -19,7 +19,8 @@ import {
   FaCog,
   FaTimes,
   FaCheck,
-  FaQrcode
+  FaQrcode,
+  FaExclamationTriangle
 } from 'react-icons/fa';
 
 const SubmissionContainer = styled.div`
