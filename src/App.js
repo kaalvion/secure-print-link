@@ -18,6 +18,10 @@ import Layout from './components/Layout';
 // Context
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { PrintJobProvider } from './context/PrintJobContext';
+import { DashboardStatsProvider } from './context/DashboardStatsContext';
+import { JobQueueProvider } from './context/JobQueueContext';
+import { PrintReleaseProvider } from './context/PrintReleaseContext';
+import { PrinterProvider } from './context/PrinterContext';
 
 const RequireAuth = ({ children }) => {
   const { isAuthenticated } = useAuth();
@@ -72,9 +76,15 @@ function App() {
                 path="/dashboard"
                 element={
                   <RequireAuth>
-                    <Layout>
-                      <Dashboard />
-                    </Layout>
+                    <DashboardStatsProvider>
+                      <JobQueueProvider>
+                        <PrinterProvider>
+                          <Layout>
+                            <Dashboard />
+                          </Layout>
+                        </PrinterProvider>
+                      </JobQueueProvider>
+                    </DashboardStatsProvider>
                   </RequireAuth>
                 }
               />
@@ -102,9 +112,15 @@ function App() {
                 path="/print-job-queue"
                 element={
                   <RequireAuth>
-                    <Layout>
-                      <PrintJobQueue />
-                    </Layout>
+                    <JobQueueProvider>
+                      <PrinterProvider>
+                        <PrintReleaseProvider>
+                          <Layout>
+                            <PrintJobQueue />
+                          </Layout>
+                        </PrintReleaseProvider>
+                      </PrinterProvider>
+                    </JobQueueProvider>
                   </RequireAuth>
                 }
               />
@@ -112,9 +128,11 @@ function App() {
                 path="/printer-management"
                 element={
                   <RequireAuth>
-                    <Layout>
-                      <PrinterManagement />
-                    </Layout>
+                    <PrinterProvider>
+                      <Layout>
+                        <PrinterManagement />
+                      </Layout>
+                    </PrinterProvider>
                   </RequireAuth>
                 }
               />
@@ -130,15 +148,29 @@ function App() {
               />
               <Route
                 path="/release/:jobId"
-                element={<PrintRelease />}
+                element={
+                  <JobQueueProvider>
+                    <PrinterProvider>
+                      <PrintReleaseProvider>
+                        <PrintRelease />
+                      </PrintReleaseProvider>
+                    </PrinterProvider>
+                  </JobQueueProvider>
+                }
               />
               <Route
                 path="/print-release"
                 element={
                   <RequireAuth>
-                    <Layout>
-                      <PrintRelease />
-                    </Layout>
+                    <JobQueueProvider>
+                      <PrinterProvider>
+                        <PrintReleaseProvider>
+                          <Layout>
+                            <PrintRelease />
+                          </Layout>
+                        </PrintReleaseProvider>
+                      </PrinterProvider>
+                    </JobQueueProvider>
                   </RequireAuth>
                 }
               />
@@ -146,9 +178,11 @@ function App() {
                 path="/reports"
                 element={
                   <RequireAuth>
-                    <Layout>
-                      <Reports />
-                    </Layout>
+                    <DashboardStatsProvider>
+                      <Layout>
+                        <Reports />
+                      </Layout>
+                    </DashboardStatsProvider>
                   </RequireAuth>
                 }
               />

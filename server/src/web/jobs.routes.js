@@ -501,6 +501,42 @@ router.post('/:id/complete', (req, res) => {
   res.json({ success: true, message: 'Job marked as completed' });
 });
 
+// Get job statistics
+router.get('/stats', (req, res) => {
+  const db = req.db;
+  const { userId } = req.query;
+  
+  try {
+    let baseQuery = 'SELECT status, viewCount, expiresAt, cost FROM jobs';
+    let params = [];
+    
+    if (userId) {
+      baseQuery += ' WHERE userId = ?';
+      params.push(userId);
+    }
+    
+    const jobs = db.prepare(baseQuery).all(params);
+    const now = new Date();
+    
+    const stats = {
+      total: jobs.length,
+      totalCost: +(jobs.reduce((acc, j) => acc + (j.cost || 0), 0)).toFixed(2),
+      pending: jobs.filter(j => j.status === 'pending').length,
+      released: jobs.filter(j => j.status === 'released').length,
+      completed: jobs.filter(j => j.status === 'completed').length,
+      cancelled: jobs.filter(j => j.status === 'cancelled').length,
+      deleted: jobs.filter(j => j.status === 'deleted').length,
+      viewed: jobs.filter(j => j.viewCount > 0).length,
+      expired: jobs.filter(j => j.status === 'deleted' || (j.expiresAt && new Date(j.expiresAt) < now)).length
+    };
+    
+    res.json({ stats });
+  } catch (err) {
+    console.error('Error fetching stats:', err);
+    res.status(500).json({ error: 'Failed to fetch statistics' });
+  }
+});
+
 // Get all jobs (admin or filtered by user)
 router.get('/', (req, res) => {
   const db = req.db;

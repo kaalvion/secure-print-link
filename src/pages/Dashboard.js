@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { useAuth } from '../context/AuthContext';
-import { usePrintJob } from '../context/PrintJobContext';
+import { useDashboardStats } from '../context/DashboardStatsContext';
+import { useJobQueue } from '../context/JobQueueContext';
+import { usePrinters } from '../context/PrinterContext';
 import { FaPrint, FaFileAlt, FaServer, FaChartBar, FaCog, FaClock, FaCheckCircle, FaExclamationTriangle, FaEye } from 'react-icons/fa';
 import EmptyState from '../components/EmptyState';
 
@@ -363,35 +365,28 @@ const SystemStatus = styled.div`
 
 const Dashboard = () => {
   const { currentUser } = useAuth();
-  const { printJobs, getJobStatistics, printers: allPrinters, isFetching } = usePrintJob();
+  const { stats, fetchStats, loading: statsLoading } = useDashboardStats();
+  const { jobs, fetchJobs, isFetching: jobsFetching } = useJobQueue();
+  const { printers, fetchPrinters, loading: printersLoading } = usePrinters();
   const navigate = useNavigate();
-  const [userJobs, setUserJobs] = useState([]);
-  const [printers, setPrinters] = useState([]);
-  const [stats, setStats] = useState({
-    total: 0,
-    pending: 0,
-    released: 0,
-    completed: 0,
-    cancelled: 0,
-    viewed: 0,
-    expired: 0
-  });
 
-  // Filter user's jobs and calculate statistics
+  // Initial fetch: ONLY stats
   useEffect(() => {
-    if (printJobs && currentUser?.id) {
-      const userJobs = printJobs.filter(job => job.userId === currentUser.id);
-      setUserJobs(userJobs);
-      
-      // Calculate real-time statistics from the same data source
-      const jobStats = getJobStatistics(currentUser.id);
-      setStats(jobStats);
+    if (currentUser?.id) {
+      fetchStats();
     }
-    
-    if (allPrinters) {
-      setPrinters(allPrinters);
-    }
-  }, [printJobs, currentUser, getJobStatistics, allPrinters]);
+  }, [currentUser?.id, fetchStats]);
+
+  // Lazy load: Jobs and Printers after initial render
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (currentUser?.id) {
+        fetchJobs();
+        fetchPrinters();
+      }
+    }, 500); // 500ms delay to ensure dashboard feels instant
+    return () => clearTimeout(timer);
+  }, [currentUser?.id, fetchJobs, fetchPrinters]);
 
   const onlinePrinters = printers.filter(p => p.status === 'online');
   const offlinePrinters = printers.filter(p => p.status === 'offline');
@@ -406,7 +401,7 @@ const Dashboard = () => {
     });
   };
 
-  if (isFetching && (!printJobs.length || !printers.length)) {
+  if (statsLoading && !stats) {
     return (
       <DashboardContainer>
         <PageHeader>
@@ -425,40 +420,18 @@ const Dashboard = () => {
             </StatCard>
           ))}
         </StatsGrid>
-
-        <ContentGrid>
-          <MainContent>
-            <Section>
-              <div className="skeleton skeleton-title"></div>
-              <JobList>
-                {[1, 2, 3].map(i => (
-                  <JobItem key={i}>
-                    <div className="job-info">
-                      <div className="skeleton skeleton-circle"></div>
-                      <div className="job-details">
-                        <div className="skeleton skeleton-text" style={{ width: '150px' }}></div>
-                        <div className="skeleton skeleton-text" style={{ width: '100px' }}></div>
-                      </div>
-                    </div>
-                  </JobItem>
-                ))}
-              </JobList>
-            </Section>
-          </MainContent>
-          <SidebarContent>
-            <Section>
-              <div className="skeleton skeleton-title"></div>
-              <QuickActions>
-                {[1, 2, 3, 4].map(i => (
-                  <div key={i} className="skeleton skeleton-rect" style={{ height: '70px', borderRadius: 'var(--border-radius-md)' }}></div>
-                ))}
-              </QuickActions>
-            </Section>
-          </SidebarContent>
-        </ContentGrid>
       </DashboardContainer>
     );
   }
+
+  const currentStats = stats || {
+    total: 0,
+    pending: 0,
+    released: 0,
+    completed: 0,
+    viewed: 0,
+    expired: 0
+  };
 
   return (
     <DashboardContainer>
@@ -473,7 +446,7 @@ const Dashboard = () => {
             <FaFileAlt />
           </div>
           <div className="stat-info">
-            <div className="stat-value">{stats.total}</div>
+            <div className="stat-value">{currentStats.total}</div>
             <div className="stat-label">Total Jobs</div>
           </div>
         </StatCard>
@@ -483,7 +456,7 @@ const Dashboard = () => {
             <FaClock />
           </div>
           <div className="stat-info">
-            <div className="stat-value">{stats.pending}</div>
+            <div className="stat-value">{currentStats.pending}</div>
             <div className="stat-label">Pending</div>
           </div>
         </StatCard>
@@ -493,7 +466,7 @@ const Dashboard = () => {
             <FaPrint />
           </div>
           <div className="stat-info">
-            <div className="stat-value">{stats.released}</div>
+            <div className="stat-value">{currentStats.released}</div>
             <div className="stat-label">Released</div>
           </div>
         </StatCard>
@@ -503,7 +476,7 @@ const Dashboard = () => {
             <FaCheckCircle />
           </div>
           <div className="stat-info">
-            <div className="stat-value">{stats.completed}</div>
+            <div className="stat-value">{currentStats.completed}</div>
             <div className="stat-label">Completed</div>
           </div>
         </StatCard>
@@ -513,7 +486,7 @@ const Dashboard = () => {
             <FaEye />
           </div>
           <div className="stat-info">
-            <div className="stat-value">{stats.viewed}</div>
+            <div className="stat-value">{currentStats.viewed}</div>
             <div className="stat-label">Viewed</div>
           </div>
         </StatCard>
@@ -523,7 +496,7 @@ const Dashboard = () => {
             <FaExclamationTriangle />
           </div>
           <div className="stat-info">
-            <div className="stat-value">{stats.expired}</div>
+            <div className="stat-value">{currentStats.expired}</div>
             <div className="stat-label">Expired</div>
           </div>
         </StatCard>
@@ -537,8 +510,20 @@ const Dashboard = () => {
               <a href="/print-job-queue" className="view-all">View All</a>
             </div>
             <JobList>
-              {userJobs.length > 0 ? (
-                userJobs.slice(0, 5).map((job) => (
+              {jobsFetching && !jobs.length ? (
+                [1, 2, 3].map(i => (
+                  <JobItem key={i}>
+                    <div className="job-info">
+                      <div className="skeleton skeleton-circle"></div>
+                      <div className="job-details">
+                        <div className="skeleton skeleton-text" style={{ width: '150px' }}></div>
+                        <div className="skeleton skeleton-text" style={{ width: '100px' }}></div>
+                      </div>
+                    </div>
+                  </JobItem>
+                ))
+              ) : jobs.length > 0 ? (
+                jobs.slice(0, 5).map((job) => (
                   <JobItem key={job.id}>
                     <div className="job-info">
                       <div className="job-icon">
@@ -573,7 +558,11 @@ const Dashboard = () => {
               <a href="/printers" className="view-all">Manage Printers</a>
             </div>
             <PrinterGrid>
-              {printers.map(printer => (
+              {printersLoading && !printers.length ? (
+                [1, 2, 3].map(i => (
+                  <div key={i} className="skeleton skeleton-rect" style={{ height: '100px', borderRadius: 'var(--border-radius-md)' }}></div>
+                ))
+              ) : printers.map(printer => (
                 <PrinterCard key={printer.id} status={printer.status}>
                   <div className="printer-icon">
                     <FaServer />
