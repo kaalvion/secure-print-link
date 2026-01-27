@@ -1,7 +1,6 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import styled from 'styled-components';
-import { toast } from 'react-toastify';
-import { usePrinters } from '../context/PrinterContext';
+import { usePrintJob } from '../context/PrintJobContext';
 import { 
   FaServer, 
   FaPlus, 
@@ -169,37 +168,20 @@ const PrinterCard = styled.div`
 `;
 
 const PrinterManagement = () => {
-  const { printers, fetchPrinters, loading } = usePrinters();
-
-  useEffect(() => {
-    fetchPrinters();
-  }, [fetchPrinters]);
+  const { printers, updatePrinter, deletePrinter } = usePrintJob();
 
   const handleToggleStatus = (printerId) => {
-    // const printer = printers.find(p => p.id === printerId);
-    // if (printer) {
-    //   updatePrinter(printerId, { status: printer.status === 'online' ? 'offline' : 'online' });
-    // }
-    toast.info('Status toggle is simulated in this demo.');
+    const printer = printers.find(p => p.id === printerId);
+    if (printer) {
+      updatePrinter(printerId, { status: printer.status === 'online' ? 'offline' : 'online' });
+    }
   };
 
   const handleDeletePrinter = (printerId) => {
     if (window.confirm('Are you sure you want to delete this printer?')) {
-      // deletePrinter(printerId);
-      toast.info('Delete is simulated in this demo.');
+      deletePrinter(printerId);
     }
   };
-
-  if (loading && !printers.length) {
-    return (
-      <ManagementContainer>
-        <PageHeader>
-          <h1>Printer Management</h1>
-          <p>Loading printers...</p>
-        </PageHeader>
-      </ManagementContainer>
-    );
-  }
 
   return (
     <ManagementContainer>

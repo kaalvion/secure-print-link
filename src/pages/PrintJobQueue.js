@@ -1,10 +1,8 @@
-import React, { useState, useEffect, useCallback, memo } from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { toast } from 'react-toastify';
 import { useAuth } from '../context/AuthContext';
-import { useJobQueue } from '../context/JobQueueContext';
-import { usePrinters } from '../context/PrinterContext';
-import { usePrintRelease } from '../context/PrintReleaseContext';
+import { usePrintJob } from '../context/PrintJobContext';
 import { useNavigate } from 'react-router-dom';
 import EmptyState from '../components/EmptyState';
 import { 
@@ -326,7 +324,137 @@ const LoadingWrapper = styled.div`
   }
 `;
 
-const JobListItem = memo(({ job, onView, onRelease, onDelete }) => {
+const PrintJobQueue = () => {
+  const { currentUser } = useAuth();
+  const { printJobs, deletePrintJob, viewPrintJob, releasePrintJob, printers } = usePrintJob();
+  const navigate = useNavigate();
+  const [filteredJobs, setFilteredJobs] = useState([]);
+  const [filters, setFilters] = useState({
+    status: 'all',
+    priority: 'all',
+    search: ''
+  });
+  const [sortBy, setSortBy] = useState('submittedAt');
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [userJobs, setUserJobs] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Filter user's jobs only
+  useEffect(() => {
+    if (printJobs && currentUser?.id) {
+      const userJobs = printJobs.filter(job => job.userId === currentUser.id);
+      setUserJobs(userJobs);
+      setLoading(false);
+    }
+  }, [printJobs, currentUser]);
+
+  // Apply filters and sorting
+  useEffect(() => {
+    if (!userJobs.length) return;
+    
+    let jobs = [...userJobs];
+    
+    // Apply filters
+    if (filters.status !== 'all') {
+      jobs = jobs.filter(job => job.status === filters.status);
+    }
+    if (filters.priority !== 'all') {
+      jobs = jobs.filter(job => job.priority === filters.priority);
+    }
+    if (filters.search) {
+      jobs = jobs.filter(job => 
+        job.documentName?.toLowerCase().includes(filters.search.toLowerCase()) ||
+        job.notes?.toLowerCase().includes(filters.search.toLowerCase())
+      );
+    }
+    
+    // Apply sorting
+    jobs.sort((a, b) => {
+      let aValue = a[sortBy];
+      let bValue = b[sortBy];
+      
+      if (sortBy === 'submittedAt' || sortBy === 'releasedAt' || sortBy === 'completedAt') {
+        aValue = new Date(aValue || 0);
+        bValue = new Date(bValue || 0);
+      }
+      
+      if (sortOrder === 'asc') {
+        return aValue > bValue ? 1 : -1;
+      } else {
+        return aValue < bValue ? 1 : -1;
+      }
+    });
+    
+    setFilteredJobs(jobs);
+  }, [userJobs, filters, sortBy, sortOrder]);
+
+  const handleDeleteJob = async (jobId) => {
+    if (window.confirm('Are you sure you want to delete this print job? This cannot be undone.')) {
+      try {
+        await deletePrintJob(jobId);
+        toast.success('Print job deleted successfully');
+      } catch (error) {
+        toast.error('Failed to delete print job: ' + error.message);
+      }
+    }
+  };
+
+  const handleViewJob = async (jobId) => {
+    const job = filteredJobs.find(j => j.id === jobId);
+    if (!job) {
+      toast.error('Job not found.');
+      return;
+    }
+    
+    if (job.viewCount > 0) {
+      toast.error('Document already viewed (one-time only)');
+      return;
+    }
+
+    try {
+      const documentData = await viewPrintJob(jobId, job.secureToken, currentUser.id);
+      if (documentData?.dataUrl) {
+        // Open in new tab for preview (not download)
+        window.open(documentData.dataUrl, '_blank');
+      } else {
+        toast.error('Document data not available for viewing.');
+      }
+    } catch (error) {
+      if (error.message === 'Document already viewed') {
+        // Already handled by viewPrintJob
+        return;
+      }
+      toast.error('Failed to view document: ' + error.message);
+    }
+  };
+
+  const handleReleaseJob = async (jobId) => {
+    const job = filteredJobs.find(j => j.id === jobId);
+    if (!job) return;
+
+    // Find an online printer (default)
+    const printer = printers.find(p => p.status === 'online') || { id: 1 };
+
+    setLoading(true);
+    try {
+      await releasePrintJob(jobId, printer.id, currentUser.id, job.secureToken);
+      // No toast here, Context handles it
+    } catch (error) {
+      // Context handles toast
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSort = (field) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder('desc');
+    }
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -356,178 +484,7 @@ const JobListItem = memo(({ job, onView, onRelease, onDelete }) => {
     }
   };
 
-  return (
-    <JobItem>
-      <JobStatus>
-        <div className={`status-badge ${job.status}`}>
-          {getStatusIcon(job.status)}
-          {job.status}
-        </div>
-        <div className="job-cost">${job.cost?.toFixed(2) || '0.00'}</div>
-      </JobStatus>
-      
-      <JobInfo>
-        <div className="job-title" title={job.documentName}>{job.documentName}</div>
-        <div className="job-details">
-          <div className="detail-item">
-            <span>{job.pages} Pages</span>
-            <div className="dot" />
-            <span>{job.copies} Copies</span>
-          </div>
-          <div className="detail-item">
-            <div className="dot" />
-            <span style={{ color: getPriorityColor(job.priority) }}>
-              {job.priority.toUpperCase()} Priority
-            </span>
-          </div>
-          <div className="detail-item">
-            <div className="dot" />
-            <span>{formatDate(job.submittedAt)}</span>
-          </div>
-          {job.notes && (
-            <div className="detail-item">
-              <div className="dot" />
-              <span>{job.notes}</span>
-            </div>
-          )}
-        </div>
-      </JobInfo>
-      
-      <JobActions>
-        <ActionButton
-          onClick={() => onView(job)}
-          disabled={job.viewCount > 0}
-          title={job.viewCount > 0 ? 'Document already viewed (one-time only)' : 'Preview document (one-time view)'}
-          className={job.viewCount > 0 ? 'danger' : 'success'}
-        >
-          {job.viewCount > 0 ? <FaTimes /> : <FaEye />}
-        </ActionButton>
-        
-        {job.status === 'pending' && job.viewCount > 0 && (
-          <ActionButton
-            onClick={() => onRelease(job)}
-            title="Release this job for printing"
-            className="success"
-          >
-            <FaPrint />
-          </ActionButton>
-        )}
-        
-        <ActionButton
-          onClick={() => onDelete(job.id)}
-          title="Delete this job"
-          className="danger"
-        >
-          <FaTrash />
-        </ActionButton>
-      </JobActions>
-    </JobItem>
-  );
-});
-
-const PrintJobQueue = () => {
-  const { currentUser } = useAuth();
-  const { jobs, fetchJobs, deleteJob, viewJob, isFetching } = useJobQueue();
-  const { printers, fetchPrinters } = usePrinters();
-  const { releaseJob } = usePrintRelease();
-  const navigate = useNavigate();
-  
-  const [filteredJobs, setFilteredJobs] = useState([]);
-  const [filters, setFilters] = useState({
-    status: 'all',
-    priority: 'all',
-    search: ''
-  });
-  const [sortBy, setSortBy] = useState('submittedAt');
-  const [sortOrder, setSortOrder] = useState('desc');
-
-  // Initial fetch
-  useEffect(() => {
-    if (currentUser?.id) {
-      fetchJobs();
-      fetchPrinters();
-    }
-  }, [currentUser?.id, fetchJobs, fetchPrinters]);
-
-  // Apply filters and sorting
-  useEffect(() => {
-    if (!jobs.length) {
-      setFilteredJobs([]);
-      return;
-    }
-    
-    let result = [...jobs];
-    
-    // Apply filters
-    if (filters.status !== 'all') {
-      result = result.filter(job => job.status === filters.status);
-    }
-    if (filters.priority !== 'all') {
-      result = result.filter(job => job.priority === filters.priority);
-    }
-    if (filters.search) {
-      result = result.filter(job => 
-        job.documentName?.toLowerCase().includes(filters.search.toLowerCase()) ||
-        job.notes?.toLowerCase().includes(filters.search.toLowerCase())
-      );
-    }
-    
-    // Apply sorting
-    result.sort((a, b) => {
-      let aValue = a[sortBy];
-      let bValue = b[sortBy];
-      
-      if (sortBy === 'submittedAt' || sortBy === 'releasedAt' || sortBy === 'completedAt') {
-        aValue = new Date(aValue || 0);
-        bValue = new Date(bValue || 0);
-      }
-      
-      if (sortOrder === 'asc') {
-        return aValue > bValue ? 1 : -1;
-      } else {
-        return aValue < bValue ? 1 : -1;
-      }
-    });
-    
-    setFilteredJobs(result);
-  }, [jobs, filters, sortBy, sortOrder]);
-
-  const handleDeleteJob = useCallback(async (jobId) => {
-    if (window.confirm('Are you sure you want to delete this print job? This cannot be undone.')) {
-      await deleteJob(jobId);
-      toast.success('Print job deleted');
-    }
-  }, [deleteJob]);
-
-  const handleViewJob = useCallback(async (job) => {
-    try {
-      const documentData = await viewJob(job.id, job.secureToken, currentUser.id);
-      if (documentData?.dataUrl) {
-        window.open(documentData.dataUrl, '_blank');
-      }
-    } catch (error) {
-      toast.error('Failed to view document');
-    }
-  }, [viewJob, currentUser?.id]);
-
-  const handleReleaseJob = useCallback(async (job) => {
-    const printer = printers.find(p => p.status === 'online') || { id: 1 };
-    const success = await releaseJob(job.id, printer.id, currentUser.id, job.secureToken);
-    if (success) {
-      fetchJobs(true); // Silent refresh
-    }
-  }, [releaseJob, currentUser?.id, printers, fetchJobs]);
-
-  const handleSort = (field) => {
-    if (sortBy === field) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(field);
-      setSortOrder('desc');
-    }
-  };
-
-  if (isFetching && !jobs.length) {
+  if (loading) {
     return (
       <QueueContainer>
         <LoadingWrapper>
@@ -629,13 +586,72 @@ const PrintJobQueue = () => {
         {filteredJobs.length > 0 ? (
           <JobList>
             {filteredJobs.map((job) => (
-              <JobListItem 
-                key={job.id} 
-                job={job} 
-                onView={handleViewJob}
-                onRelease={handleReleaseJob}
-                onDelete={handleDeleteJob}
-              />
+              <JobItem key={job.id}>
+                <JobStatus>
+                  <div className={`status-badge ${job.status}`}>
+                    {getStatusIcon(job.status)}
+                    {job.status}
+                  </div>
+                  <div className="job-cost">${job.cost?.toFixed(2) || '0.00'}</div>
+                </JobStatus>
+                
+                <JobInfo>
+                  <div className="job-title" title={job.documentName}>{job.documentName}</div>
+                  <div className="job-details">
+                    <div className="detail-item">
+                      <span>{job.pages} Pages</span>
+                      <div className="dot" />
+                      <span>{job.copies} Copies</span>
+                    </div>
+                    <div className="detail-item">
+                      <div className="dot" />
+                      <span style={{ color: getPriorityColor(job.priority) }}>
+                        {job.priority.toUpperCase()} Priority
+                      </span>
+                    </div>
+                    <div className="detail-item">
+                      <div className="dot" />
+                      <span>{formatDate(job.submittedAt)}</span>
+                    </div>
+                    {job.notes && (
+                      <div className="detail-item">
+                        <div className="dot" />
+                        <span>{job.notes}</span>
+                      </div>
+                    )}
+                  </div>
+                </JobInfo>
+                
+                <JobActions>
+                  <ActionButton
+                    onClick={() => handleViewJob(job.id)}
+                    disabled={job.viewCount > 0}
+                    title={job.viewCount > 0 ? 'Document already viewed (one-time only)' : 'Preview document (one-time view)'}
+                    className={job.viewCount > 0 ? 'danger' : 'success'}
+                  >
+                    {job.viewCount > 0 ? <FaTimes /> : <FaEye />}
+                  </ActionButton>
+                  
+                  {job.status === 'pending' && job.viewCount > 0 && (
+                    <ActionButton
+                      onClick={() => handleReleaseJob(job.id)}
+                      disabled={loading}
+                      title="Release this job for printing"
+                      className="success"
+                    >
+                      <FaPrint />
+                    </ActionButton>
+                  )}
+                  
+                  <ActionButton
+                    onClick={() => handleDeleteJob(job.id)}
+                    title="Delete this job"
+                    className="danger"
+                  >
+                    <FaTrash />
+                  </ActionButton>
+                </JobActions>
+              </JobItem>
             ))}
           </JobList>
         ) : (

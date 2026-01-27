@@ -90,6 +90,30 @@ export function createDb(dbPath) {
       FOREIGN KEY(jobId) REFERENCES jobs(id) ON DELETE CASCADE
     );
     
+    -- Chat system tables
+    CREATE TABLE IF NOT EXISTS conversations (
+      id TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      printerShopId TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      lastMessageAt TEXT,
+      UNIQUE(userId, printerShopId),
+      FOREIGN KEY(userId) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY(printerShopId) REFERENCES printers(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      conversationId TEXT NOT NULL,
+      senderId TEXT NOT NULL,
+      senderRole TEXT NOT NULL,
+      message TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      readStatus INTEGER DEFAULT 0,
+      FOREIGN KEY(conversationId) REFERENCES conversations(id) ON DELETE CASCADE
+    );
+    
     -- Create indexes for performance
     CREATE INDEX IF NOT EXISTS idx_jobs_userId ON jobs(userId);
     CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
@@ -97,6 +121,14 @@ export function createDb(dbPath) {
     CREATE INDEX IF NOT EXISTS idx_jobs_secureToken ON jobs(secureToken);
     CREATE INDEX IF NOT EXISTS idx_documents_jobId ON documents(jobId);
     CREATE INDEX IF NOT EXISTS idx_job_views_jobId ON job_views(jobId);
+    
+    -- Chat indexes for performance
+    CREATE INDEX IF NOT EXISTS idx_conversations_userId ON conversations(userId);
+    CREATE INDEX IF NOT EXISTS idx_conversations_printerShopId ON conversations(printerShopId);
+    CREATE INDEX IF NOT EXISTS idx_conversations_lastMessageAt ON conversations(lastMessageAt);
+    CREATE INDEX IF NOT EXISTS idx_messages_conversationId ON messages(conversationId);
+    CREATE INDEX IF NOT EXISTS idx_messages_createdAt ON messages(createdAt);
+    CREATE INDEX IF NOT EXISTS idx_messages_readStatus ON messages(readStatus);
   `);
 
   return db;

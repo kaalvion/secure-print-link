@@ -14,7 +14,8 @@ import {
   FaChevronLeft,
   FaChevronRight,
   FaBars,
-  FaTimes
+  FaTimes,
+  FaComments
 } from 'react-icons/fa';
 
 const SidebarContainer = styled.aside`
@@ -358,6 +359,7 @@ const Sidebar = ({ isOpen, onToggle }) => {
         { path: '/dashboard', icon: FaHome, text: 'Dashboard' },
         { path: '/submit-job', icon: FaPrint, text: 'Submit Print Job' },
         { path: '/print-job-queue', icon: FaList, text: 'Print Job Queue' },
+        { path: '/chat', icon: FaComments, text: 'Messages' },
       ]
     },
     {

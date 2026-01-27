@@ -2,9 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { toast } from 'react-toastify';
 import { useAuth } from '../context/AuthContext';
-import { useJobQueue } from '../context/JobQueueContext';
-import { usePrinters } from '../context/PrinterContext';
-import { usePrintRelease } from '../context/PrintReleaseContext';
+import { usePrintJob } from '../context/PrintJobContext';
 import { QRCodeCanvas } from 'qrcode.react';
 import { 
   FaQrcode, 
@@ -372,9 +370,7 @@ const EmptyState = styled.div`
 
 const PrintRelease = () => {
   const { loginWithPin, mockUsers } = useAuth();
-  const { jobs: printJobs } = useJobQueue();
-  const { releaseJob } = usePrintRelease();
-  const { printers, fetchPrinters } = usePrinters();
+  const { printJobs, releasePrintJob, printers, validateTokenAndExpiration } = usePrintJob();
   const params = useParams();
   const location = useLocation();
   const [authMethod, setAuthMethod] = useState(null);
@@ -387,11 +383,6 @@ const PrintRelease = () => {
   const [autoPrintDone, setAutoPrintDone] = useState(false);
   const [printedViaIframe, setPrintedViaIframe] = useState(false);
   const [serverJob, setServerJob] = useState(null);
-  
-  // Initial fetch
-  useEffect(() => {
-    fetchPrinters();
-  }, [fetchPrinters]);
   
   // SECURITY: Multi-use support - track releases per session, NOT globally
   // - releasingRef prevents duplicate calls during same render cycle (React StrictMode)
@@ -433,7 +424,20 @@ const PrintRelease = () => {
           return;
         }
         
-        // API not available - use job list check (fallback)
+        // API not available - use client-side validation (fallback)
+        if (validateTokenAndExpiration) {
+          const validation = validateTokenAndExpiration(jobId, token);
+          if (!validation.valid) {
+            const errorMsg = validation.error || 'Invalid or expired print link';
+            if (errorMsg.includes('expired')) {
+              toast.info(errorMsg, { autoClose: 5000 });
+            } else {
+              toast.error(errorMsg);
+            }
+            return;
+          }
+        }
+        
         const job = printJobs.find(j => j.id === jobId && j.secureToken === token);
         if (job) {
           if (job.expiresAt && new Date(job.expiresAt) < new Date()) {
@@ -450,7 +454,7 @@ const PrintRelease = () => {
     };
     
     validateFromServer();
-  }, [params.jobId, location.search, printJobs]);
+  }, [params.jobId, location.search, printJobs, validateTokenAndExpiration]);
 
   // Auto-open print dialog for the actual document once auto-release is done
   useEffect(() => {
@@ -648,26 +652,39 @@ const PrintRelease = () => {
     setLoading(true);
     
     // Release the job automatically
-    releaseJob(jobId, printer.id, user.id, token)
-      .then((success) => {
-        if (success) {
-          // Success - mark as released in this session
-          releasedInSession.current = true;
-          setAutoPrintDone(true);
-          
-          // Cache document for future prints in this session
-          if (documentData && !cachedDocument) {
-            setCachedDocument(documentData);
-          }
-        } else {
-          releasingRef.current = false;
+    releasePrintJob(jobId, printer.id, user.id, token)
+      .then(() => {
+        // Success - mark as released in this session
+        releasedInSession.current = true;
+        toast.success('Print job released successfully! You can print multiple times until the link expires.', {
+          autoClose: 5000
+        });
+        setAutoPrintDone(true);
+        
+        // Cache document for future prints in this session
+        if (documentData && !cachedDocument) {
+          setCachedDocument(documentData);
         }
       })
       .catch((err) => {
+        // Check if error is due to expiration (expected behavior)
+        const errorMsg = err.message || 'Unknown error';
+        if (errorMsg.includes('expired')) {
+          toast.info('This print link has expired', { autoClose: 5000 });
+        } else if (errorMsg.includes('already been used')) {
+          // Should not happen with multi-use backend, but handle gracefully
+          toast.info('This link was already used in another session. The link remains valid until expiration.', {
+            autoClose: 5000
+          });
+          releasedInSession.current = true; // Treat as success
+        } else {
+          toast.error('Failed to release print job: ' + errorMsg);
+        }
+        // Reset releasing flag on error so user can retry manually
         releasingRef.current = false;
       })
       .finally(() => setLoading(false));
-  }, [params.jobId, location.search, printJobs, printers, mockUsers, releaseJob, serverJob, cachedDocument]);
+  }, [params.jobId, location.search, printJobs, printers, mockUsers, releasePrintJob, serverJob, cachedDocument]);
 
   const userJobs = authenticatedUser 
     ? [
@@ -741,7 +758,8 @@ const PrintRelease = () => {
     setLoading(true);
     try {
       const token = new URLSearchParams(location.search).get('token');
-      await releaseJob(jobId, selectedPrinter.id, authenticatedUser.id, token);
+      await releasePrintJob(jobId, selectedPrinter.id, authenticatedUser.id, token);
+      toast.success('Print job released successfully! You can release it again until the link expires.');
       
       // Cache document for future use
       const job = serverJob || printJobs.find(j => j.id === jobId);
@@ -749,7 +767,12 @@ const PrintRelease = () => {
         setCachedDocument(job.document);
       }
     } catch (error) {
-      // Handled by context
+      const errorMsg = error.message || 'Failed to release print job';
+      if (errorMsg.includes('expired')) {
+        toast.info('This print link has expired', { autoClose: 5000 });
+      } else {
+        toast.error(errorMsg);
+      }
     } finally {
       setLoading(false);
     }
@@ -765,10 +788,16 @@ const PrintRelease = () => {
     try {
       const token = new URLSearchParams(location.search).get('token');
       for (const job of jobsWithDocuments) {
-        await releaseJob(job.id, selectedPrinter.id, authenticatedUser.id, token);
+        await releasePrintJob(job.id, selectedPrinter.id, authenticatedUser.id, token);
       }
+      toast.success('All print jobs released successfully! You can release them again until the links expire.');
     } catch (error) {
-      // Handled by context
+      const errorMsg = error.message || 'Failed to release some print jobs';
+      if (errorMsg.includes('expired')) {
+        toast.info('One or more print links have expired', { autoClose: 5000 });
+      } else {
+        toast.error(errorMsg);
+      }
     } finally {
       setLoading(false);
     }

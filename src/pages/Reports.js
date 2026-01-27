@@ -1,8 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
-import { useDashboardStats } from '../context/DashboardStatsContext';
-import { useAuth } from '../context/AuthContext';
-import { useEffect } from 'react';
+import { usePrintJob } from '../context/PrintJobContext';
 import { 
   FaChartBar, 
   FaPrint, 
@@ -105,31 +103,8 @@ const ChartPlaceholder = styled.div`
 `;
 
 const Reports = () => {
-  const { currentUser } = useAuth();
-  const { stats, fetchStats, loading } = useDashboardStats();
-
-  useEffect(() => {
-    if (currentUser?.id) {
-      fetchStats();
-    }
-  }, [currentUser?.id, fetchStats]);
-
-  const currentStats = stats || {
-    total: 0,
-    totalCost: 0,
-    completed: 0
-  };
-
-  if (loading && !stats) {
-    return (
-      <ReportsContainer>
-        <PageHeader>
-          <h1>Reports & Analytics</h1>
-          <p>Loading analytics...</p>
-        </PageHeader>
-      </ReportsContainer>
-    );
-  }
+  const { getJobStatistics } = usePrintJob();
+  const stats = getJobStatistics();
 
   return (
     <ReportsContainer>
@@ -145,7 +120,7 @@ const Reports = () => {
               <FaChartBar />
             </div>
           </div>
-          <div className="stat-value">{currentStats.total}</div>
+          <div className="stat-value">{stats.total}</div>
           <div className="stat-label">Total Print Jobs</div>
         </StatCard>
 
@@ -155,7 +130,7 @@ const Reports = () => {
               <FaPrint />
             </div>
           </div>
-          <div className="stat-value">${currentStats.totalCost}</div>
+          <div className="stat-value">${stats.totalCost}</div>
           <div className="stat-label">Total Cost</div>
         </StatCard>
 
@@ -165,7 +140,7 @@ const Reports = () => {
               <FaUsers />
             </div>
           </div>
-          <div className="stat-value">{currentStats.completed}</div>
+          <div className="stat-value">{stats.completed}</div>
           <div className="stat-label">Completed Jobs</div>
         </StatCard>
 

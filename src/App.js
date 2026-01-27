@@ -13,15 +13,13 @@ import Authentication from './pages/Authentication';
 import PrintRelease from './pages/PrintRelease';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
+import Chat from './pages/Chat';
 import Layout from './components/Layout';
 
 // Context
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { PrintJobProvider } from './context/PrintJobContext';
-import { DashboardStatsProvider } from './context/DashboardStatsContext';
-import { JobQueueProvider } from './context/JobQueueContext';
-import { PrintReleaseProvider } from './context/PrintReleaseContext';
-import { PrinterProvider } from './context/PrinterContext';
+import { ChatProvider } from './context/ChatContext';
 
 const RequireAuth = ({ children }) => {
   const { isAuthenticated } = useAuth();
@@ -61,9 +59,10 @@ function App() {
   return (
     <AuthProvider>
       <PrintJobProvider>
-        <ErrorBoundary>
-          <Router>
-            <Routes>
+        <ChatProvider>
+          <ErrorBoundary>
+            <Router>
+              <Routes>
               <Route
                 path="/login"
                 element={
@@ -76,15 +75,9 @@ function App() {
                 path="/dashboard"
                 element={
                   <RequireAuth>
-                    <DashboardStatsProvider>
-                      <JobQueueProvider>
-                        <PrinterProvider>
-                          <Layout>
-                            <Dashboard />
-                          </Layout>
-                        </PrinterProvider>
-                      </JobQueueProvider>
-                    </DashboardStatsProvider>
+                    <Layout>
+                      <Dashboard />
+                    </Layout>
                   </RequireAuth>
                 }
               />
@@ -112,15 +105,9 @@ function App() {
                 path="/print-job-queue"
                 element={
                   <RequireAuth>
-                    <JobQueueProvider>
-                      <PrinterProvider>
-                        <PrintReleaseProvider>
-                          <Layout>
-                            <PrintJobQueue />
-                          </Layout>
-                        </PrintReleaseProvider>
-                      </PrinterProvider>
-                    </JobQueueProvider>
+                    <Layout>
+                      <PrintJobQueue />
+                    </Layout>
                   </RequireAuth>
                 }
               />
@@ -128,11 +115,9 @@ function App() {
                 path="/printer-management"
                 element={
                   <RequireAuth>
-                    <PrinterProvider>
-                      <Layout>
-                        <PrinterManagement />
-                      </Layout>
-                    </PrinterProvider>
+                    <Layout>
+                      <PrinterManagement />
+                    </Layout>
                   </RequireAuth>
                 }
               />
@@ -148,29 +133,15 @@ function App() {
               />
               <Route
                 path="/release/:jobId"
-                element={
-                  <JobQueueProvider>
-                    <PrinterProvider>
-                      <PrintReleaseProvider>
-                        <PrintRelease />
-                      </PrintReleaseProvider>
-                    </PrinterProvider>
-                  </JobQueueProvider>
-                }
+                element={<PrintRelease />}
               />
               <Route
                 path="/print-release"
                 element={
                   <RequireAuth>
-                    <JobQueueProvider>
-                      <PrinterProvider>
-                        <PrintReleaseProvider>
-                          <Layout>
-                            <PrintRelease />
-                          </Layout>
-                        </PrintReleaseProvider>
-                      </PrinterProvider>
-                    </JobQueueProvider>
+                    <Layout>
+                      <PrintRelease />
+                    </Layout>
                   </RequireAuth>
                 }
               />
@@ -178,11 +149,9 @@ function App() {
                 path="/reports"
                 element={
                   <RequireAuth>
-                    <DashboardStatsProvider>
-                      <Layout>
-                        <Reports />
-                      </Layout>
-                    </DashboardStatsProvider>
+                    <Layout>
+                      <Reports />
+                    </Layout>
                   </RequireAuth>
                 }
               />
@@ -196,14 +165,25 @@ function App() {
                   </RequireAuth>
                 }
               />
+              <Route
+                path="/chat"
+                element={
+                  <RequireAuth>
+                    <Layout>
+                      <Chat />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
               <Route path="/" element={<Navigate to="/login" replace />} />
             </Routes>
           </Router>
           <ToastContainer />
         </ErrorBoundary>
-      </PrintJobProvider>
-    </AuthProvider>
-  );
+      </ChatProvider>
+    </PrintJobProvider>
+  </AuthProvider>
+);
 }
 
 export default App;
