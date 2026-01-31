@@ -9,40 +9,58 @@ const RequireRole = ({ children, allowedRoles }) => {
     const location = useLocation();
 
     useEffect(() => {
-        if (isLoaded && !isSignedIn) {
-            navigate('/login');
-        }
-    }, [isLoaded, isSignedIn, navigate]);
+        // Wait for Clerk to load
+        if (!isLoaded) return;
 
+        // If not signed in, redirect to login
+        if (!isSignedIn) {
+            navigate('/login');
+            return;
+        }
+
+        const userRole = user.unsafeMetadata?.role;
+
+        // If user has no role and not on onboarding page, redirect to onboarding
+        if (!userRole && location.pathname !== '/onboarding') {
+            console.log('[RequireRole] No role found, redirecting to onboarding');
+            navigate('/onboarding');
+            return;
+        }
+
+        // If user has role but tries to access onboarding, send them to dashboard
+        if (userRole && location.pathname === '/onboarding') {
+            console.log('[RequireRole] User has role, redirecting from onboarding to dashboard');
+            navigate('/dashboard');
+            return;
+        }
+
+        // Check if user's role is allowed for this route
+        if (allowedRoles && userRole && !allowedRoles.includes(userRole)) {
+            console.log('[RequireRole] User role not allowed, redirecting to dashboard');
+            navigate('/dashboard');
+            return;
+        }
+    }, [isLoaded, isSignedIn, user, navigate, location.pathname, allowedRoles]);
+
+    // Show nothing while loading or redirecting
     if (!isLoaded || !isSignedIn) {
-        return null; // Or a loading spinner
+        return null;
     }
 
     const userRole = user.unsafeMetadata?.role;
 
-    // 1. If user has no role, force them to onboarding
-    // Exception: If they are already ON the onboarding page (handled by App.js routing usually, but good check)
+    // Don't render if no role and not on onboarding page
     if (!userRole && location.pathname !== '/onboarding') {
-        return null; // The useEffect below handles navigation, return null to prevent flash
-    }
-
-    // Effect to handle redirection to avoid rendering issues
-    if (!userRole && location.pathname !== '/onboarding') {
-        navigate('/onboarding');
         return null;
     }
 
-    // 2. If user has role but tries to access Onboarding, send them to Dashboard
+    // Don't render if user has role but we're redirecting from onboarding
     if (userRole && location.pathname === '/onboarding') {
-        navigate('/dashboard');
         return null;
     }
 
-    // 3. Check if user's role is allowed for this route
-    if (allowedRoles && !allowedRoles.includes(userRole)) {
-        // If not allowed, redirect to their allowed dashboard
-        // toast.error(`Access denied. Required role: ${allowedRoles.join(', ')}`);
-        navigate('/dashboard');
+    // Don't render if role not allowed
+    if (allowedRoles && userRole && !allowedRoles.includes(userRole)) {
         return null;
     }
 

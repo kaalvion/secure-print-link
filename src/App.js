@@ -4,7 +4,7 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { AnimatePresence } from 'framer-motion';
 import GlobalStyles from './styles/GlobalStyles';
-import { ClerkProvider, SignedIn, SignedOut } from '@clerk/clerk-react';
+import { ClerkProvider, SignedIn, SignedOut, useUser } from '@clerk/clerk-react';
 
 // Components
 import Dashboard from './pages/Dashboard';
@@ -39,6 +39,25 @@ const RequireAuth = ({ children }) => {
       {children}
     </RequireRole>
   );
+};
+
+// Root redirect component - handles navigation after login
+const RootRedirect = () => {
+  const { user, isLoaded } = useUser();
+
+  if (!isLoaded) {
+    return null; // Loading
+  }
+
+  const userRole = user?.unsafeMetadata?.role;
+
+  // If no role, go to onboarding
+  if (!userRole) {
+    return <Navigate to="/onboarding" replace />;
+  }
+
+  // If has role, go to dashboard
+  return <Navigate to="/dashboard" replace />;
 };
 
 class ErrorBoundary extends Component {
@@ -206,7 +225,23 @@ function App() {
                         </RequireRole>
                       }
                     />
-                    <Route path="/" element={<Navigate to="/login" replace />} />
+                    <Route
+                      path="/"
+                      element={
+                        <SignedIn>
+                          <RootRedirect />
+                        </SignedIn>
+                      }
+                    />
+                    <Route
+                      path="/"
+                      element={
+                        <SignedOut>
+                          <Navigate to="/login" replace />
+                        </SignedOut>
+                      }
+                    />
+
                   </Routes>
                 </AnimatePresence>
               </Router>
