@@ -278,6 +278,10 @@ const Dashboard = () => {
     show: { opacity: 1, y: 0 }
   };
 
+  const userRole = user?.unsafeMetadata?.role;
+  const isUser = userRole === 'user';
+  const isPrinterShop = userRole === 'printer';
+
   return (
     <DashboardContainer>
       <WelcomeSection
@@ -286,125 +290,226 @@ const Dashboard = () => {
         transition={{ duration: 0.5 }}
       >
         <h1>Dashboard</h1>
-        <p>Welcome back, {user?.fullName || user?.firstName}. Overview of your secure printing activity.</p>
+        <p>
+          Welcome back, {user?.fullName || user?.firstName}.
+          {isUser && " Overview of your secure printing activity."}
+          {isPrinterShop && " Manage your print shop operations."}
+        </p>
       </WelcomeSection>
 
       <motion.div variants={containerVariants} initial="hidden" animate="show">
         <BentoGrid>
-          {/* Main Stat Card - Total Jobs */}
-          <GlassCard className="span-2" variants={itemVariants}>
-            <StatLabel iconColor="#60a5fa"><FaFileAlt /> Total Documents</StatLabel>
-            <StatValue gradient="linear-gradient(to right, #60a5fa, #a78bfa)">
-              {stats.total}
-            </StatValue>
-            <StatIconLarge><FaFileAlt /></StatIconLarge>
-          </GlassCard>
+          {/* USER DASHBOARD */}
+          {isUser && (
+            <>
+              {/* Main Stat Card - Total Jobs */}
+              <GlassCard className="span-2" variants={itemVariants}>
+                <StatLabel iconColor="#60a5fa"><FaFileAlt /> Total Documents</StatLabel>
+                <StatValue gradient="linear-gradient(to right, #60a5fa, #a78bfa)">
+                  {stats.total}
+                </StatValue>
+                <StatIconLarge><FaFileAlt /></StatIconLarge>
+              </GlassCard>
 
-          {/* Pending Jobs */}
-          <GlassCard variants={itemVariants} style={{ background: 'rgba(245, 158, 11, 0.1)' }}>
-            <StatLabel iconColor="#fbbf24"><FaClock /> Pending</StatLabel>
-            <StatValue gradient="linear-gradient(to right, #fbbf24, #f59e0b)">
-              {stats.pending}
-            </StatValue>
-          </GlassCard>
+              {/* Pending Jobs */}
+              <GlassCard variants={itemVariants} style={{ background: 'rgba(245, 158, 11, 0.1)' }}>
+                <StatLabel iconColor="#fbbf24"><FaClock /> Pending</StatLabel>
+                <StatValue gradient="linear-gradient(to right, #fbbf24, #f59e0b)">
+                  {stats.pending}
+                </StatValue>
+              </GlassCard>
 
-          {/* Released Jobs */}
-          <GlassCard variants={itemVariants} style={{ background: 'rgba(52, 211, 153, 0.1)' }}>
-            <StatLabel iconColor="#34d399"><FaCheckCircle /> Released</StatLabel>
-            <StatValue gradient="linear-gradient(to right, #34d399, #10b981)">
-              {stats.released}
-            </StatValue>
-          </GlassCard>
+              {/* Completed Jobs */}
+              <GlassCard variants={itemVariants} style={{ background: 'rgba(52, 211, 153, 0.1)' }}>
+                <StatLabel iconColor="#34d399"><FaCheckCircle /> Completed</StatLabel>
+                <StatValue gradient="linear-gradient(to right, #34d399, #10b981)">
+                  {stats.completed}
+                </StatValue>
+              </GlassCard>
 
-          {/* Quick Actions (Span 2 Columns) */}
-          <GlassCard className="span-2" variants={itemVariants}>
-            <SectionHeader>
-              <h3>Quick Actions</h3>
-            </SectionHeader>
-            <ActionGrid>
-              <ActionButton onClick={() => navigate('/submit-job')}>
-                <div className="icon-box"><FaPrint /></div>
-                <span>New Print</span>
-              </ActionButton>
-              <ActionButton onClick={() => navigate('/print-job-queue')}>
-                <div className="icon-box"><FaFileAlt /></div>
-                <span>Job Queue</span>
-              </ActionButton>
-              <ActionButton onClick={() => navigate('/print-release')}>
-                <div className="icon-box"><FaCheckCircle /></div>
-                <span>Release</span>
-              </ActionButton>
-              <ActionButton onClick={() => navigate('/shop-discovery')}>
-                <div className="icon-box"><FaMapMarkerAlt /></div>
-                <span>Find Shop</span>
-              </ActionButton>
-            </ActionGrid>
-          </GlassCard>
+              {/* Quick Actions for Users */}
+              <GlassCard className="span-2" variants={itemVariants}>
+                <SectionHeader>
+                  <h3>Quick Actions</h3>
+                </SectionHeader>
+                <ActionGrid>
+                  <ActionButton onClick={() => navigate('/submit-job')}>
+                    <div className="icon-box"><FaPrint /></div>
+                    <span>New Print</span>
+                  </ActionButton>
+                  <ActionButton onClick={() => navigate('/print-job-queue')}>
+                    <div className="icon-box"><FaFileAlt /></div>
+                    <span>My Jobs</span>
+                  </ActionButton>
+                  <ActionButton onClick={() => navigate('/shop-discovery')}>
+                    <div className="icon-box"><FaMapMarkerAlt /></div>
+                    <span>Find Shop</span>
+                  </ActionButton>
+                  <ActionButton onClick={() => navigate('/settings')}>
+                    <div className="icon-box"><FaCog /></div>
+                    <span>Settings</span>
+                  </ActionButton>
+                </ActionGrid>
+              </GlassCard>
 
-          {/* Recent Jobs List (Span 2 Columns, Row 2) */}
-          <GlassCard className="span-2 row-2" variants={itemVariants}>
-            <SectionHeader>
-              <h3>Recent Activity</h3>
-              <a href="/print-job-queue">View All <FaArrowRight /></a>
-            </SectionHeader>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {userJobs.length > 0 ? (
-                userJobs.slice(0, 4).map((job) => (
-                  <JobItem key={job.id}>
-                    <div className="info">
-                      <div className="icon"><FaFileAlt /></div>
-                      <div className="text">
-                        <h4>{job.documentName}</h4>
-                        <p>{formatDate(job.submittedAt)} • {job.pages} pgs</p>
+              {/* Recent Jobs List */}
+              <GlassCard className="span-2 row-2" variants={itemVariants}>
+                <SectionHeader>
+                  <h3>My Recent Jobs</h3>
+                  <a href="/print-job-queue">View All <FaArrowRight /></a>
+                </SectionHeader>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {userJobs.length > 0 ? (
+                    userJobs.slice(0, 4).map((job) => (
+                      <JobItem key={job.id}>
+                        <div className="info">
+                          <div className="icon"><FaFileAlt /></div>
+                          <div className="text">
+                            <h4>{job.documentName}</h4>
+                            <p>{formatDate(job.submittedAt)} • {job.pages} pgs</p>
+                          </div>
+                        </div>
+                        <StatusBadge className={job.status.toLowerCase()}>
+                          {job.status}
+                        </StatusBadge>
+                      </JobItem>
+                    ))
+                  ) : (
+                    <EmptyState
+                      type="jobs"
+                      action={() => navigate('/submit-job')}
+                      actionText="Submit First Job"
+                    />
+                  )}
+                </div>
+              </GlassCard>
+            </>
+          )}
+
+          {/* PRINTER SHOP DASHBOARD */}
+          {isPrinterShop && (
+            <>
+              {/* Incoming Jobs */}
+              <GlassCard className="span-2" variants={itemVariants}>
+                <StatLabel iconColor="#60a5fa"><FaFileAlt /> Incoming Jobs</StatLabel>
+                <StatValue gradient="linear-gradient(to right, #60a5fa, #a78bfa)">
+                  {printJobs.filter(j => j.status === 'pending' || j.status === 'released').length}
+                </StatValue>
+                <StatIconLarge><FaFileAlt /></StatIconLarge>
+              </GlassCard>
+
+              {/* Pending Release */}
+              <GlassCard variants={itemVariants} style={{ background: 'rgba(245, 158, 11, 0.1)' }}>
+                <StatLabel iconColor="#fbbf24"><FaClock /> Awaiting Release</StatLabel>
+                <StatValue gradient="linear-gradient(to right, #fbbf24, #f59e0b)">
+                  {printJobs.filter(j => j.status === 'pending').length}
+                </StatValue>
+              </GlassCard>
+
+              {/* Completed Today */}
+              <GlassCard variants={itemVariants} style={{ background: 'rgba(52, 211, 153, 0.1)' }}>
+                <StatLabel iconColor="#34d399"><FaCheckCircle /> Completed</StatLabel>
+                <StatValue gradient="linear-gradient(to right, #34d399, #10b981)">
+                  {printJobs.filter(j => j.status === 'completed').length}
+                </StatValue>
+              </GlassCard>
+
+              {/* Quick Actions for Printer Shop */}
+              <GlassCard className="span-2" variants={itemVariants}>
+                <SectionHeader>
+                  <h3>Quick Actions</h3>
+                </SectionHeader>
+                <ActionGrid>
+                  <ActionButton onClick={() => navigate('/print-release')}>
+                    <div className="icon-box"><FaCheckCircle /></div>
+                    <span>Release Print</span>
+                  </ActionButton>
+                  <ActionButton onClick={() => navigate('/print-job-queue')}>
+                    <div className="icon-box"><FaFileAlt /></div>
+                    <span>Job Queue</span>
+                  </ActionButton>
+                  <ActionButton onClick={() => navigate('/printer-management')}>
+                    <div className="icon-box"><FaCog /></div>
+                    <span>Printers</span>
+                  </ActionButton>
+                  <ActionButton onClick={() => navigate('/reports')}>
+                    <div className="icon-box"><FaChartBar /></div>
+                    <span>Analytics</span>
+                  </ActionButton>
+                </ActionGrid>
+              </GlassCard>
+
+              {/* Printer Status */}
+              <GlassCard className="span-2" variants={itemVariants}>
+                <SectionHeader>
+                  <h3>Printer Status</h3>
+                  <a href="/printer-management"><FaCog /></a>
+                </SectionHeader>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                  {printers.slice(0, 3).map((printer, idx) => (
+                    <div key={idx} style={{
+                      padding: '12px',
+                      background: 'rgba(255,255,255,0.02)',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(255,255,255,0.08)'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>{printer.name}</span>
+                        <span style={{
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          fontSize: '0.7rem',
+                          background: printer.status === 'online' ? 'rgba(52, 211, 153, 0.2)' : 'rgba(248, 113, 113, 0.2)',
+                          color: printer.status === 'online' ? '#34d399' : '#f87171'
+                        }}>
+                          {printer.status}
+                        </span>
+                      </div>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                        {printer.location}
                       </div>
                     </div>
-                    <StatusBadge className={job.status.toLowerCase()}>
-                      {job.status}
-                    </StatusBadge>
-                  </JobItem>
-                ))
-              ) : (
-                <EmptyState
-                  type="jobs"
-                  action={() => navigate('/submit-job')}
-                  actionText="Submit First Job"
-                />
-              )}
-            </div>
-          </GlassCard>
+                  ))}
+                  {printers.length === 0 && (
+                    <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '24px' }}>
+                      No printers configured yet
+                    </div>
+                  )}
+                </div>
+              </GlassCard>
 
-          {/* System/Printer Status */}
-          <GlassCard variants={itemVariants}>
-            <SectionHeader>
-              <h3>Printers</h3>
-              <a href="/printer-management"><FaCog /></a>
-            </SectionHeader>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Online</span>
-                <span style={{ color: '#34d399', fontWeight: 'bold' }}>
-                  {printers.filter(p => p.status === 'online').length}
-                </span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Offline</span>
-                <span style={{ color: '#f87171', fontWeight: 'bold' }}>
-                  {printers.filter(p => p.status === 'offline').length}
-                </span>
-              </div>
-            </div>
-          </GlassCard>
-
-          {/* Reports Link Card */}
-          <GlassCard variants={itemVariants} onClick={() => navigate('/reports')} style={{ cursor: 'pointer' }}>
-            <StatLabel iconColor="#a78bfa"><FaChartBar /> Analytics</StatLabel>
-            <div style={{ marginTop: '16px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-              View detailed usage reports and cost analysis.
-            </div>
-            <div style={{ marginTop: 'auto', paddingTop: '16px', display: 'flex', justifyContent: 'flex-end', color: 'var(--primary)' }}>
-              <FaArrowRight />
-            </div>
-          </GlassCard>
+              {/* Recent Jobs for Printer Shop */}
+              <GlassCard className="span-2 row-2" variants={itemVariants}>
+                <SectionHeader>
+                  <h3>Recent Print Requests</h3>
+                  <a href="/print-job-queue">View All <FaArrowRight /></a>
+                </SectionHeader>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {printJobs.length > 0 ? (
+                    printJobs.slice(0, 4).map((job) => (
+                      <JobItem key={job.id}>
+                        <div className="info">
+                          <div className="icon"><FaFileAlt /></div>
+                          <div className="text">
+                            <h4>{job.documentName}</h4>
+                            <p>{job.userName} • {formatDate(job.submittedAt)} • {job.pages} pgs</p>
+                          </div>
+                        </div>
+                        <StatusBadge className={job.status.toLowerCase()}>
+                          {job.status}
+                        </StatusBadge>
+                      </JobItem>
+                    ))
+                  ) : (
+                    <EmptyState
+                      type="jobs"
+                      actionText="No print requests yet"
+                    />
+                  )}
+                </div>
+              </GlassCard>
+            </>
+          )}
 
         </BentoGrid>
       </motion.div>

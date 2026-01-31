@@ -315,6 +315,7 @@ const UserSection = styled.div`
     transition: opacity var(--transition-normal);
     min-width: 0;
     overflow: hidden;
+    flex: 1;
   }
   
   .user-name {
@@ -324,15 +325,40 @@ const UserSection = styled.div`
     overflow: hidden;
     text-overflow: ellipsis;
     color: white;
+    margin-bottom: 4px;
   }
   
   .user-role {
-    font-size: 0.75rem;
-    color: var(--text-light);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 6px;
     text-transform: capitalize;
+    white-space: nowrap;
+    
+    /* User role - Blue */
+    &.role-user {
+      background: rgba(59, 130, 246, 0.2);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+    
+    /* Printer Shop role - Purple */
+    &.role-printer {
+      background: rgba(168, 85, 247, 0.2);
+      color: #a78bfa;
+      border: 1px solid rgba(168, 85, 247, 0.3);
+    }
+    
+    /* Admin role - Red */
+    &.role-admin {
+      background: rgba(239, 68, 68, 0.2);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
   }
   
   @media (max-width: 768px) {
@@ -487,7 +513,12 @@ const Sidebar = ({ isOpen, onToggle }) => {
             </div>
             <div className="user-details">
               <div className="user-name">{user?.fullName || user?.firstName}</div>
-              <div className="user-role">{user?.unsafeMetadata?.role || 'User'}</div>
+              <div className={`user-role role-${userRole || 'user'}`}>
+                {userRole === 'user' && '👤 User'}
+                {userRole === 'printer' && '🖨️ Print Shop'}
+                {userRole === 'admin' && '⚡ Admin'}
+                {!userRole && '👤 User'}
+              </div>
             </div>
           </div>
         </UserSection>
