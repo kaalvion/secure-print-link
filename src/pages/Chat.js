@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useChat } from '../context/ChatContext';
-import { useAuth } from '../context/AuthContext';
+import { useUser } from '@clerk/clerk-react';
 import { usePrintJob } from '../context/PrintJobContext';
 import { FaComments, FaPaperPlane, FaCircle } from 'react-icons/fa';
 
@@ -345,7 +345,7 @@ const PrinterSelector = styled.div`
 `;
 
 const ChatPage = () => {
-  const { currentUser } = useAuth();
+  const { user: currentUser } = useUser();
   const { conversations, messages, activeConversation, loadMessages, sendMessage, joinConversation, getOrCreateConversation, onlineUsers, typingUsers } = useChat();
   const { printers } = usePrintJob();
   const [selectedConversation, setSelectedConversation] = useState(null);

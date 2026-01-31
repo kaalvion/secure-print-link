@@ -16,8 +16,12 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    
-    console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`);
+
+    // Only log requests if backend is enabled
+    const backendEnabled = process.env.REACT_APP_ENABLE_CHAT_BACKEND === 'true';
+    if (backendEnabled) {
+      console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`);
+    }
     return config;
   },
   (error) => {
@@ -29,17 +33,28 @@ api.interceptors.request.use(
 // Response interceptor for error handling and logging
 api.interceptors.response.use(
   (response) => {
-    console.log(`[API Response] ${response.status} ${response.config.url}`);
+    const backendEnabled = process.env.REACT_APP_ENABLE_CHAT_BACKEND === 'true';
+    if (backendEnabled) {
+      console.log(`[API Response] ${response.status} ${response.config.url}`);
+    }
     return response;
   },
   (error) => {
+    // Don't log errors if backend is disabled (expected in offline mode)
+    const backendEnabled = process.env.REACT_APP_ENABLE_CHAT_BACKEND === 'true';
+
+    if (!backendEnabled) {
+      // Silently reject in offline mode
+      return Promise.reject(error);
+    }
+
     console.error('[API Response Error]', error);
-    
+
     // Handle different error types
     if (error.response) {
       // Server responded with error status
       const { status, data } = error.response;
-      
+
       switch (status) {
         case 400:
           console.error('Bad Request:', data?.error || 'Invalid request data');
@@ -78,7 +93,7 @@ api.interceptors.response.use(
       // Something else happened
       console.error('Request Error:', error.message);
     }
-    
+
     return Promise.reject(error);
   }
 );
@@ -127,15 +142,15 @@ export const handleApiError = (error, defaultMessage = 'An error occurred') => {
   if (error instanceof ApiError) {
     return error.message;
   }
-  
+
   if (error.response) {
     return error.response.data?.error || defaultMessage;
   }
-  
+
   if (error.request) {
     return 'Network error - please check your connection';
   }
-  
+
   return error.message || defaultMessage;
 };
 
@@ -144,27 +159,27 @@ export const validateApiResponse = (response, requiredFields = []) => {
   if (!response || typeof response !== 'object') {
     throw new ApiError('Invalid API response format', 500, 'INVALID_RESPONSE');
   }
-  
+
   if (response.error) {
     throw new ApiError(response.error, response.status || 500, response.code || 'API_ERROR');
   }
-  
+
   // Check required fields
   for (const field of requiredFields) {
     if (!(field in response)) {
       throw new ApiError(`Missing required field: ${field}`, 500, 'MISSING_FIELD');
     }
   }
-  
+
   return response;
 };
 
-export { 
-  ApiError, 
-  ValidationError, 
-  AuthenticationError, 
-  AuthorizationError, 
-  NotFoundError 
+export {
+  ApiError,
+  ValidationError,
+  AuthenticationError,
+  AuthorizationError,
+  NotFoundError
 };
 
 export default api;

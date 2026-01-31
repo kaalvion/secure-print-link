@@ -3,25 +3,29 @@ import styled from 'styled-components';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import ChatFloatingWidget from './ChatFloatingWidget';
+import Background3D from './Background3D';
+import { motion } from 'framer-motion';
 
 const LayoutContainer = styled.div`
   display: flex;
   min-height: 100vh;
-  background: var(--background-light);
+  position: relative;
+  overflow-x: hidden;
 `;
 
-const MainContent = styled.main`
+const MainContent = styled(motion.main)`
   flex: 1;
   padding: 32px;
   padding-top: 96px; /* Header height (64px) + spacing (32px) */
-  transition: all var(--transition-normal);
   width: 100%;
   max-width: 1600px;
   margin: 0 auto;
+  position: relative;
+  z-index: 10;
   
   @media (max-width: 768px) {
     padding: 16px;
-    padding-top: 80px; /* Header height (64px) + spacing (16px) */
+    padding-top: 80px;
   }
 `;
 
@@ -55,9 +59,15 @@ const Layout = ({ children }) => {
 
   return (
     <LayoutContainer>
+      <Background3D />
       <Header onMenuToggle={() => toggleSidebar()} />
       <Sidebar isOpen={sidebarOpen} onToggle={toggleSidebar} />
-      <MainContent>
+      <MainContent
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -20 }}
+        transition={{ duration: 0.3 }}
+      >
         {children}
       </MainContent>
       <ChatFloatingWidget />

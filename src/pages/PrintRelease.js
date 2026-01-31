@@ -1,1306 +1,498 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { toast } from 'react-toastify';
-import { useAuth } from '../context/AuthContext';
+import { useClerk } from '@clerk/clerk-react';
 import { usePrintJob } from '../context/PrintJobContext';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeCanvas } from 'qrcode.react';
-import { 
-  FaQrcode, 
-  FaKey, 
+import {
+  FaQrcode,
+  FaKey,
   FaPrint,
-  FaEye,
-  FaChartBar
+  FaCheckCircle,
+  FaFileAlt,
+  FaArrowLeft
 } from 'react-icons/fa';
-import { useParams, useLocation } from 'react-router-dom';
 
 const ReleaseContainer = styled.div`
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 20px;
-  max-width: 1000px;
-  margin: 0 auto;
+  background: radial-gradient(circle at top right, #1e293b 0%, #0f172a 100%);
 `;
 
-const PageHeader = styled.div`
-  text-align: center;
-  margin-bottom: 30px;
-  
-  h1 {
-    font-size: 28px;
-    font-weight: bold;
-    color: #2c3e50;
-    margin-bottom: 8px;
-  }
-  
-  p {
-    color: #7f8c8d;
-    font-size: 16px;
-  }
-`;
-
-const PrinterInterface = styled.div`
-  background: #2c3e50;
-  border-radius: 20px;
-  padding: 40px;
-  color: white;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-  position: relative;
+const GlassOrbo = styled(motion.div)`
+  width: 100%;
+  max-width: 900px;
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 32px;
   overflow: hidden;
-  
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: linear-gradient(90deg, #3498db, #2ecc71, #f39c12, #e74c3c);
-  }
-`;
-
-const PrinterHeader = styled.div`
-  text-align: center;
-  margin-bottom: 30px;
-  
-  .printer-name {
-    font-size: 24px;
-    font-weight: bold;
-    margin-bottom: 8px;
-  }
-  
-  .printer-status {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    font-size: 14px;
-    opacity: 0.8;
-    
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #2ecc71;
-      animation: pulse 2s infinite;
-    }
-  }
-  
-  @keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.5; }
-    100% { opacity: 1; }
-  }
-`;
-
-const AuthSection = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 30px;
-  margin-bottom: 30px;
+  box-shadow: 0 20px 80px -20px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  min-height: 600px;
   
   @media (max-width: 768px) {
+    border-radius: 0;
+    min-height: 100vh;
+    border: none;
+    background: transparent;
+  }
+`;
+
+const Header = styled.div`
+  padding: 32px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  
+  h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  
+  .badge {
+    padding: 6px 12px;
+    background: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+`;
+
+const ContentArea = styled(motion.div)`
+  flex: 1;
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+`;
+
+const AuthGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  width: 100%;
+  max-width: 700px;
+  
+  @media (max-width: 600px) {
     grid-template-columns: 1fr;
   }
 `;
 
-const AuthMethod = styled.div`
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 24px;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  border: 2px solid transparent;
-  
-  &:hover {
-    background: rgba(255, 255, 255, 0.15);
-    transform: translateY(-2px);
-  }
-  
-  &.active {
-    border-color: #3498db;
-    background: rgba(52, 152, 219, 0.2);
-  }
-  
-  .auth-icon {
-    font-size: 48px;
-    margin-bottom: 16px;
-    color: #3498db;
-  }
-  
-  .auth-title {
-    font-size: 18px;
-    font-weight: 600;
-    margin-bottom: 8px;
-  }
-  
-  .auth-description {
-    font-size: 14px;
-    opacity: 0.8;
-    line-height: 1.4;
-  }
-`;
-
-const PinInput = styled.div`
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  margin: 20px 0;
-  
-  input {
-    width: 60px;
-    height: 60px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-    text-align: center;
-    font-size: 24px;
-    font-weight: bold;
-    transition: all 0.3s ease;
-    
-    &:focus {
-      outline: none;
-      border-color: #3498db;
-      background: rgba(52, 152, 219, 0.2);
-    }
-    
-    &::placeholder {
-      color: rgba(255, 255, 255, 0.5);
-    }
-  }
-`;
-
-const QRCodeDisplay = styled.div`
-  text-align: center;
-  margin: 20px 0;
-  
-  .qr-code {
-    background: white;
-    padding: 20px;
-    border-radius: 12px;
-    display: inline-block;
-    margin-bottom: 16px;
-  }
-  
-  .qr-instructions {
-    font-size: 14px;
-    opacity: 0.8;
-    line-height: 1.4;
-  }
-`;
-
-const JobsSection = styled.div`
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 24px;
-  margin-top: 30px;
-`;
-
-const JobsHeader = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-  
-  .jobs-title {
-    font-size: 18px;
-    font-weight: 600;
-  }
-  
-  .jobs-count {
-    background: rgba(52, 152, 219, 0.3);
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 500;
-  }
-`;
-
-const JobList = styled.div`
+const AuthMethodCard = styled(motion.button)`
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  padding: 32px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-`;
-
-const JobItem = styled.div`
-  display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 16px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: all 0.2s ease;
+  gap: 16px;
+  cursor: pointer;
+  color: white;
+  transition: all 0.2s;
   
   &:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(59, 130, 246, 0.1);
+    border-color: var(--primary);
+    transform: translateY(-4px);
   }
   
-  .job-info {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    
-    .job-icon {
-      width: 40px;
-      height: 40px;
-      border-radius: 8px;
-      background: rgba(52, 152, 219, 0.3);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #3498db;
-    }
-    
-    .job-details {
-      .job-name {
-        font-weight: 500;
-        margin-bottom: 4px;
-      }
-      
-      .job-meta {
-        font-size: 12px;
-        opacity: 0.7;
-      }
-    }
-  }
-  
-  .job-actions {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    align-items: center;
-  }
-`;
-
-const ActionButton = styled.button`
-  padding: 8px 16px;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  
-  &.primary {
-    background: #3498db;
-    color: white;
-    
-    &:hover {
-      background: #2980b9;
-    }
-    
-    &:disabled {
-      background: rgba(52, 152, 219, 0.5);
-      cursor: not-allowed;
-    }
-  }
-  
-  &.secondary {
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    
-    &:hover {
-      background: rgba(255, 255, 255, 0.2);
-    }
-  }
-`;
-
-const UserInfo = styled.div`
-  // ... existing code ...
-`;
-
-const AnalysisSection = styled.div`
-  background: rgba(52, 152, 219, 0.1);
-  border: 1px solid rgba(52, 152, 219, 0.2);
-  border-radius: 12px;
-  padding: 16px;
-  margin-top: 20px;
-  
-  .analysis-header {
-    font-size: 16px;
-    font-weight: 600;
-    margin-bottom: 12px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: #3498db;
-  }
-  
-  .analysis-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 16px;
-  }
-  
-  .analysis-item {
-    .analysis-label {
-      font-size: 12px;
-      opacity: 0.7;
-      margin-bottom: 4px;
-    }
-    .analysis-value {
-      font-size: 18px;
-      font-weight: 600;
-    }
-  }
-`;
-
-const EmptyState = styled.div`
-  text-align: center;
-  padding: 40px;
-  opacity: 0.7;
-  
-  .empty-icon {
+  .icon {
     font-size: 48px;
-    margin-bottom: 16px;
-    opacity: 0.5;
+    color: var(--primary);
   }
   
-  .empty-title {
-    font-size: 16px;
-    font-weight: 500;
-    margin-bottom: 8px;
+  h3 { font-size: 1.25rem; font-weight: 600; }
+  p { color: var(--text-secondary); font-size: 0.9rem; }
+`;
+
+const PinPad = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  max-width: 300px;
+  
+  button {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    font-size: 1.5rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.1s;
+    
+    &:hover { background: rgba(255, 255, 255, 0.1); }
+    &:active { background: var(--primary); transform: scale(0.95); }
+    &.wide { grid-column: span 3; border-radius: 16px; height: 60px; font-size: 1rem; }
+  }
+`;
+
+const Screen = styled(motion.div)`
+  width: 100%; 
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+`;
+
+const JobsList = styled.div`
+  width: 100%;
+  max-width: 800px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 8px;
+  
+  &::-webkit-scrollbar { width: 6px; }
+  &::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+`;
+
+const JobRow = styled.div`
+  display: flex;
+  align-items: center;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  
+  .checkbox {
+    width: 24px;
+    height: 24px;
+    border-radius: 8px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    margin-right: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--primary);
+    
+    &.checked {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+    }
   }
   
-  .empty-description {
-    font-size: 14px;
+  .info {
+    flex: 1;
+    h4 { color: white; margin-bottom: 4px; font-size: 1.1rem; }
+    p { color: var(--text-secondary); font-size: 0.9rem; }
   }
+  
+  .cost {
+    font-weight: 700;
+    color: white;
+    font-size: 1.1rem;
+    letter-spacing: 0.05em;
+  }
+`;
+
+const ActionButton = styled(motion.button)`
+  background: var(--primary-gradient);
+  color: white;
+  border: none;
+  padding: 16px 40px;
+  border-radius: 16px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+`;
+
+const PrinterSelect = styled.select`
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: white;
+  font-size: 1rem;
+  margin-bottom: 24px;
+  width: 100%;
+  max-width: 400px;
 `;
 
 const PrintRelease = () => {
-  const { loginWithPin, mockUsers } = useAuth();
-  const { printJobs, releasePrintJob, printers, validateTokenAndExpiration } = usePrintJob();
+  // const { loginWithPin, mockUsers } = useAuth(); // REMOVED
+  const { user: clerkUser } = useClerk(); // Get Clerk user if available
+  const { printJobs, releasePrintJob, printers } = usePrintJob();
   const params = useParams();
   const location = useLocation();
-  const [authMethod, setAuthMethod] = useState(null);
-  const [pin, setPin] = useState(['', '', '', '']);
-  const [pinInputs, setPinInputs] = useState([null, null, null, null]);
-  const [authenticatedUser, setAuthenticatedUser] = useState(null);
-  const [selectedPrinter, setSelectedPrinter] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [linkTargetJobId, setLinkTargetJobId] = useState(null);
-  const [autoPrintDone, setAutoPrintDone] = useState(false);
-  const [printedViaIframe, setPrintedViaIframe] = useState(false);
-  const [serverJob, setServerJob] = useState(null);
-  
-  // SECURITY: Multi-use support - track releases per session, NOT globally
-  // - releasingRef prevents duplicate calls during same render cycle (React StrictMode)
-  // - releasedInSession tracks successful releases to avoid redundant API calls
-  // - Does NOT prevent multiple releases across page refreshes (by design)
-  const releasingRef = React.useRef(false); // Prevent concurrent release attempts
-  const releasedInSession = React.useRef(false); // Track if already released in current session
-  const [cachedDocument, setCachedDocument] = useState(null); // Cache document in browser memory
+  const navigate = useNavigate();
 
+  const [step, setStep] = useState('auth'); // auth, jobs, releasing, success
+  const [authMethod, setAuthMethod] = useState(null); // pin, qr
+  const [pin, setPin] = useState('');
+  const [user, setUser] = useState(null);
+  const [selectedJobs, setSelectedJobs] = useState([]);
+  const [selectedPrinter, setSelectedPrinter] = useState('');
+
+  // Mock Users for demo functionality
+  const mockUsers = React.useMemo(() => [
+    { id: 'user_2sN...', name: 'Demo User', role: 'user' }
+  ], []);
+
+  // If already signed in via Clerk, use that user
   useEffect(() => {
-    // Validate token and expiration (server-side or client-side)
-    const jobId = params.jobId;
-    const search = new URLSearchParams(location.search);
-    const token = search.get('token');
-    if (!jobId || !token) return;
-    
-    // Try server API validation first (permanent fix)
-    const validateFromServer = async () => {
-      try {
-        const { api } = await import('../api/client');
-        const response = await api.get(`/api/jobs/${jobId}?token=${token}`);
-        if (response.data.job) {
-          setServerJob(response.data.job);
-          setLinkTargetJobId(jobId);
-          // Cache document in browser memory for multi-use
-          if (response.data.job.document) {
-            setCachedDocument(response.data.job.document);
-          }
-        }
-      } catch (apiError) {
-        // Check if this is an expiration error (expected behavior)
-        if (apiError.response?.status === 403) {
-          const errorMsg = apiError.response.data?.error || '';
-          if (errorMsg.includes('expired')) {
-            toast.info('This print link has expired', { autoClose: 5000 });
-          } else {
-            toast.error(errorMsg || 'Invalid or expired print link');
-          }
-          return;
-        }
-        
-        // API not available - use client-side validation (fallback)
-        if (validateTokenAndExpiration) {
-          const validation = validateTokenAndExpiration(jobId, token);
-          if (!validation.valid) {
-            const errorMsg = validation.error || 'Invalid or expired print link';
-            if (errorMsg.includes('expired')) {
-              toast.info(errorMsg, { autoClose: 5000 });
-            } else {
-              toast.error(errorMsg);
-            }
-            return;
-          }
-        }
-        
-        const job = printJobs.find(j => j.id === jobId && j.secureToken === token);
-        if (job) {
-          if (job.expiresAt && new Date(job.expiresAt) < new Date()) {
-            toast.info('This print link has expired', { autoClose: 5000 });
-            return;
-          }
-          setLinkTargetJobId(jobId);
-          // Cache document for multi-use
-          if (job.document) {
-            setCachedDocument(job.document);
-          }
-        }
-      }
-    };
-    
-    validateFromServer();
-  }, [params.jobId, location.search, printJobs, validateTokenAndExpiration]);
+    if (clerkUser) {
+      setUser({ ...clerkUser, name: clerkUser.fullName }); // Adapt to local shape
+      setStep('jobs');
+    }
+  }, [clerkUser]);
 
-  // Auto-open print dialog for the actual document once auto-release is done
+  const jobIdFromUrl = params.jobId;
+  const tokenFromUrl = new URLSearchParams(location.search).get('token');
+
+
+  // Effect: Check for URL mode (Link Redemption)
   useEffect(() => {
-    if (!autoPrintDone) return;
-
-    const jobId = params.jobId;
-    // Use cached document first, fallback to job document
-    const documentData = cachedDocument || serverJob?.document || printJobs.find(j => j.id === jobId)?.document;
-
-    // If we have a stored document, load and print it via an iframe
-    if (documentData?.dataUrl && !printedViaIframe) {
-      console.log('Attempting to print document:', { mimeType: documentData.mimeType, name: documentData.name });
-      const { dataUrl, mimeType } = documentData || {};
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'fixed';
-      iframe.style.right = '0';
-      iframe.style.bottom = '0';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      iframe.style.border = '0';
-      document.body.appendChild(iframe);
-
-      const printIframe = () => {
-        try {
-          if (!iframe.contentWindow) {
-            throw new Error('Iframe content window not accessible');
-          }
-          iframe.contentWindow.focus();
-          iframe.contentWindow.print();
-          setPrintedViaIframe(true);
-        } catch (error) {
-          console.error('Iframe print failed:', error);
-          
-          // Fallback: Open in new window/tab to guarantee printing works
-          try {
-            console.log('Falling back to new window print...');
-            toast.info('Opening document in new window for printing...');
-            
-            // Create a blob URL instead of data URL for better browser compatibility
-            let urlToOpen = dataUrl;
-            try {
-              if (dataUrl.startsWith('data:')) {
-                const arr = dataUrl.split(',');
-                const mime = arr[0].match(/:(.*?);/)[1];
-                const bstr = atob(arr[1]);
-                let n = bstr.length;
-                const u8arr = new Uint8Array(n);
-                while(n--) {
-                  u8arr[n] = bstr.charCodeAt(n);
-                }
-                const blob = new Blob([u8arr], {type: mime});
-                urlToOpen = URL.createObjectURL(blob);
-              }
-            } catch (e) {
-              console.warn('Failed to create blob URL, using data URL', e);
-            }
-
-            const printWindow = window.open(urlToOpen, '_blank');
-            if (printWindow) {
-              printWindow.focus();
-              printWindow.onload = () => {
-                setTimeout(() => {
-                  printWindow.print();
-                  setPrintedViaIframe(true);
-                  // Clean up blob URL if used
-                  if (urlToOpen !== dataUrl) {
-                    URL.revokeObjectURL(urlToOpen);
-                  }
-                }, 1000);
-              };
-            } else {
-              throw new Error('Popup blocked');
-            }
-          } catch (fallbackError) {
-            console.error('Fallback print failed:', fallbackError);
-            toast.error('Failed to print automatically. Please click the Print button or try downloading.');
-          }
-        }
-      };
-
-      const fileName = (documentData?.name || '').toLowerCase();
-      // Check both MIME type and file extension for better detection
-      const isPdf = (mimeType || '').includes('pdf') || fileName.endsWith('.pdf');
-      const isImage = (mimeType || '').startsWith('image/') || /\.(jpg|jpeg|png|gif|bmp|webp|svg)$/.test(fileName);
-      const isText = (mimeType || '').includes('text/') || (mimeType || '') === 'text/plain' || /\.(txt|csv)$/.test(fileName);
-      const isWord = /msword|wordprocessingml/.test(mimeType || '') || /\.(doc|docx)$/.test(fileName);
-      const isExcel = /excel|spreadsheetml/.test(mimeType || '') || /\.(xls|xlsx)$/.test(fileName);
-      const isPowerPoint = /powerpoint|presentationml/.test(mimeType || '') || /\.(ppt|pptx)$/.test(fileName);
-      const isOffice = isWord || isExcel || isPowerPoint || /officedocument/.test(mimeType || '');
-
-      if (isPdf) {
-        iframe.src = dataUrl;
-        // Increase timeout to allow PDF viewer to fully initialize
-        iframe.onload = () => setTimeout(printIframe, 100000);
-      } else if (isImage) {
-        const doc = iframe.contentWindow?.document;
-        if (doc) {
-          doc.open();
-          doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8" /><style>html,body{margin:0;padding:0;height:100%}img{display:block;max-width:100%;max-height:100%;margin:auto}</style></head><body><img src="${dataUrl}" /></body></html>`);
-          doc.close();
-          setTimeout(printIframe, 200000);
-        } else {
-          window.open(dataUrl, '_blank');
-        }
-      } else if (isText) {
-        const doc = iframe.contentWindow?.document;
-        if (doc) {
-          // Decode base64 payload if present in data URL
-          let textContent = '';
-          try {
-            const base64 = dataUrl.split(',')[1] || '';
-            textContent = atob(base64);
-          } catch (_) {}
-          doc.open();
-          doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8" /></head><body><pre>${textContent.replace(/[&<>]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]))}</pre></body></html>`);
-          doc.close();
-          setTimeout(printIframe, 200);
-        } else {
-          window.open(dataUrl, '_blank');
-        }
-      } else if (isOffice) {
-        // Office documents (Word, Excel, PowerPoint) - try to use Office Online Viewer or download
-        const officeType = isWord ? 'Word' : isExcel ? 'Excel' : 'PowerPoint';
-        toast.info(`${officeType} documents open in a new window. Use your browser's print function.`);
-        window.open(dataUrl, '_blank');
-      } else if (isText) {
-        // Additional text formats (CSV, etc.)
-        const doc = iframe.contentWindow?.document;
-        if (doc) {
-          let textContent = '';
-          try {
-            const base64 = dataUrl.split(',')[1] || '';
-            textContent = atob(base64);
-          } catch (_) {}
-          doc.open();
-          doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8" /></head><body><pre style="padding:20px;font-family:monospace;">${textContent.replace(/[&<>]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]))}</pre></body></html>`);
-          doc.close();
-          setTimeout(printIframe, 200);
-        } else {
-          window.open(dataUrl, '_blank');
+    if (jobIdFromUrl && tokenFromUrl) {
+      // Validate
+      const job = printJobs.find(j => j.id === jobIdFromUrl && j.secureToken === tokenFromUrl);
+      if (job) {
+        // Mock login user from job
+        const jobUser = mockUsers.find(u => String(u.id) === String(job.userId));
+        if (jobUser) {
+          setUser(jobUser);
+          setStep('jobs');
+          setSelectedJobs([job.id]);
         }
       } else {
-        // Unknown type: open in a new tab so the browser/plugin can handle it
-        window.open(dataUrl, '_blank');
+        // Try to validate via backend or just show invalid
+        toast.error("Invalid or expired print link.");
       }
-
-      return () => {
-        iframe.onload = null;
-        document.body.removeChild(iframe);
-      };
     }
+  }, [jobIdFromUrl, tokenFromUrl, printJobs, mockUsers]);
 
-    // If no embedded document is available, fallback to printing the page
-    // const id = setTimeout(() => {
-    //   try { window.print(); } catch (_) {}
-    // }, 300);
-    // return () => clearTimeout(id);
-
-    if (!documentData?.dataUrl && !printedViaIframe) {
-      console.warn('Document content not found, cannot auto-print.');
-      toast.error('Document content not available for printing. Please try downloading it instead.');
-    }
-  }, [autoPrintDone, printedViaIframe, params.jobId, printJobs, serverJob, cachedDocument]);
-
-  // Auto-authenticate and release if valid token and jobId are present
-  // SECURITY: Multi-use design - can be called multiple times (page refresh)
-  // - releasingRef prevents duplicate calls in same render cycle (React StrictMode)
-  // - releasedInSession prevents redundant API calls within same page load
-  // - Page refresh resets session state, allowing re-validation
-  useEffect(() => {
-    const jobId = params.jobId;
-    const search = new URLSearchParams(location.search);
-    const token = search.get('token');
-    
-    // Skip if: no job/token, already releasing, or already released in this session
-    if (!jobId || !token || releasingRef.current || releasedInSession.current) return;
-    
-    // Use cached document or fetch from server/printJobs
-    const documentData = cachedDocument || serverJob?.document;
-    const job = serverJob || printJobs.find(j => j.id === jobId && j.secureToken === token);
-    if (!job) return;
-    
-    // Find the user for this job
-    const user = mockUsers.find(u => String(u.id) === String(job.userId));
-    if (!user) return;
-    
-    // Find the first available online printer
-    const printer = printers.find(p => p.status === 'online');
-    if (!printer) return;
-    
-    // Mark as releasing to prevent duplicate calls (React StrictMode)
-    releasingRef.current = true;
-    setAuthenticatedUser(user);
-    setSelectedPrinter(printer);
-    setLoading(true);
-    
-    // Release the job automatically
-    releasePrintJob(jobId, printer.id, user.id, token)
-      .then(() => {
-        // Success - mark as released in this session
-        releasedInSession.current = true;
-        toast.success('Print job released successfully! You can print multiple times until the link expires.', {
-          autoClose: 5000
-        });
-        setAutoPrintDone(true);
-        
-        // Cache document for future prints in this session
-        if (documentData && !cachedDocument) {
-          setCachedDocument(documentData);
-        }
-      })
-      .catch((err) => {
-        // Check if error is due to expiration (expected behavior)
-        const errorMsg = err.message || 'Unknown error';
-        if (errorMsg.includes('expired')) {
-          toast.info('This print link has expired', { autoClose: 5000 });
-        } else if (errorMsg.includes('already been used')) {
-          // Should not happen with multi-use backend, but handle gracefully
-          toast.info('This link was already used in another session. The link remains valid until expiration.', {
-            autoClose: 5000
-          });
-          releasedInSession.current = true; // Treat as success
-        } else {
-          toast.error('Failed to release print job: ' + errorMsg);
-        }
-        // Reset releasing flag on error so user can retry manually
-        releasingRef.current = false;
-      })
-      .finally(() => setLoading(false));
-  }, [params.jobId, location.search, printJobs, printers, mockUsers, releasePrintJob, serverJob, cachedDocument]);
-
-  const userJobs = authenticatedUser 
-    ? [
-        // Include serverJob if it matches user (ignore status for multi-use)
-        ...(serverJob && serverJob.userId === authenticatedUser.id ? [serverJob] : []),
-        // Include printJobs that match user (ignore status for multi-use)
-        ...printJobs.filter(job => job.userId === authenticatedUser.id && job.id !== serverJob?.id)
-      ]
-    : [];
-
-  const jobsToShow = linkTargetJobId
-    ? userJobs.filter(j => j.id === linkTargetJobId)
-    : userJobs;
-
-  // BUGFIX: Ensure document data is available for display
-  // If cachedDocument exists, attach it to jobs that don't have document data
-  const jobsWithDocuments = jobsToShow.map(job => {
-    // Priority 1: Job already has document
-    if (job.document?.dataUrl) {
-      return job;
-    }
-    // Priority 2: Use cached document if job IDs match
-    if (cachedDocument && (linkTargetJobId === job.id || jobsToShow.length === 1)) {
-      console.log(`Attaching cached document to job ${job.id}`);
-      return { ...job, document: cachedDocument };
-    }
-    // Priority 3: No document available
-    console.warn(`Job ${job.id} (${job.documentName}) has no document data`);
-    return job;
-  });
-
-  const handlePinChange = (index, value) => {
-    if (value.length > 1) return;
-    
-    const newPin = [...pin];
-    newPin[index] = value;
-    setPin(newPin);
-    
-    if (value && index < 3) {
-      pinInputs[index + 1]?.focus();
-    }
-  };
-
-  const handlePinSubmit = async () => {
-    const pinString = pin.join('');
-    if (pinString.length !== 4) {
-      toast.error('Please enter a 4-digit PIN');
+  // Handle PIN input
+  const handlePinPress = async (val) => {
+    if (val === 'clear') {
+      setPin('');
       return;
     }
-
-    setLoading(true);
-    try {
-      const result = await loginWithPin(pinString);
-      setAuthenticatedUser(result.user);
-      toast.success(`Welcome, ${result.user.name}!`);
-      setPin(['', '', '', '']);
-    } catch (error) {
-      toast.error('Invalid PIN');
-      setPin(['', '', '', '']);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleReleaseJob = async (jobId) => {
-    if (!selectedPrinter) {
-      toast.error('Please select a printer first');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const token = new URLSearchParams(location.search).get('token');
-      await releasePrintJob(jobId, selectedPrinter.id, authenticatedUser.id, token);
-      toast.success('Print job released successfully! You can release it again until the link expires.');
-      
-      // Cache document for future use
-      const job = serverJob || printJobs.find(j => j.id === jobId);
-      if (job?.document && !cachedDocument) {
-        setCachedDocument(job.document);
-      }
-    } catch (error) {
-      const errorMsg = error.message || 'Failed to release print job';
-      if (errorMsg.includes('expired')) {
-        toast.info('This print link has expired', { autoClose: 5000 });
+    if (val === 'enter') {
+      if (pin.length !== 4) return toast.error('PIN must be 4 digits');
+      // Mock PIN Login
+      if (pin === '1234') {
+        setUser({ id: 'demo_user', name: 'Kiosk User', role: 'user' });
+        setStep('jobs');
       } else {
-        toast.error(errorMsg);
+        toast.error('Invalid PIN');
+        setPin('');
       }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleReleaseAll = async () => {
-    if (!selectedPrinter) {
-      toast.error('Please select a printer first');
       return;
     }
-
-    setLoading(true);
-    try {
-      const token = new URLSearchParams(location.search).get('token');
-      for (const job of jobsWithDocuments) {
-        await releasePrintJob(job.id, selectedPrinter.id, authenticatedUser.id, token);
-      }
-      toast.success('All print jobs released successfully! You can release them again until the links expire.');
-    } catch (error) {
-      const errorMsg = error.message || 'Failed to release some print jobs';
-      if (errorMsg.includes('expired')) {
-        toast.info('One or more print links have expired', { autoClose: 5000 });
-      } else {
-        toast.error(errorMsg);
-      }
-    } finally {
-      setLoading(false);
-    }
+    if (pin.length < 4) setPin(prev => prev + val);
   };
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+  const getUserJobs = () => {
+    if (!user) return [];
+    // If URL mode, only show that job? Or all user jobs?
+    // Let's show all user jobs for convenience if they authenticated fully, 
+    // but if it was just a link "auto-login", maybe restrict?
+    // For now, show all.
+    return printJobs.filter(j => j.userId === user.id && j.status === 'pending');
   };
 
-  // Helper: Convert data URL to Blob URL to avoid browser size limits
-  const convertDataUrlToBlob = (dataUrl) => {
+  const toggleJob = (id) => {
+    if (selectedJobs.includes(id)) setSelectedJobs(prev => prev.filter(j => j !== id));
+    else setSelectedJobs(prev => [...prev, id]);
+  };
+
+  const handleRelease = async () => {
+    if (selectedJobs.length === 0) return;
+    const printerId = selectedPrinter || printers.find(p => p.status === 'online')?.id;
+    if (!printerId) return toast.error('No online printer available');
+
+    setStep('releasing');
+
     try {
-      if (!dataUrl.startsWith('data:')) return dataUrl;
-      
-      const arr = dataUrl.split(',');
-      const mime = arr[0].match(/:(.*?);/)[1];
-      const bstr = atob(arr[1]);
-      let n = bstr.length;
-      const u8arr = new Uint8Array(n);
-      while(n--) {
-        u8arr[n] = bstr.charCodeAt(n);
+      // Release all selected
+      for (const jid of selectedJobs) {
+        // If we have a token from URL and it matches the job, use it. Otherwise use job's stored token (if implementing fully)
+        // For simulation, we just call release
+        const job = printJobs.find(j => j.id === jid); // Need token?
+        await releasePrintJob(jid, printerId, user.id, job?.secureToken || 'session-token');
       }
-      const blob = new Blob([u8arr], {type: mime});
-      return URL.createObjectURL(blob);
+      setTimeout(() => setStep('success'), 1500); // Fake delay for animation
     } catch (e) {
-      console.warn('Failed to create blob URL, using data URL fallback', e);
-      return dataUrl;
+      toast.error(e.message);
+      setStep('jobs');
     }
-  };
-
-  const handleViewDocument = (job) => {
-    // Use cached document first, fallback to job document
-    const documentData = cachedDocument || job?.document;
-    if (!documentData?.dataUrl) {
-      toast.warning('Document not available for preview');
-      return;
-    }
-
-    const { dataUrl, mimeType, name } = documentData;
-    const isPdf = (mimeType || '').includes('pdf');
-    const isImage = (mimeType || '').startsWith('image/');
-    const isText = (mimeType || '').includes('text/');
-    const isWord = /msword|wordprocessingml/.test(mimeType || '');
-    const isExcel = /excel|spreadsheetml/.test(mimeType || '');
-    const isPowerPoint = /powerpoint|presentationml/.test(mimeType || '');
-    const isOffice = isWord || isExcel || isPowerPoint;
-
-    // For PDFs and images, open in a new window for viewing/printing
-    if (isPdf || isImage) {
-      if (isPdf) {
-        // Convert to blob URL for PDFs (avoids data URL size limits)
-        const blobUrl = convertDataUrlToBlob(dataUrl);
-        const printWindow = window.open(blobUrl, '_blank');
-        
-        // Cleanup blob URL after window loads
-        if (blobUrl !== dataUrl && printWindow) {
-          printWindow.addEventListener('load', () => {
-            setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-          });
-        }
-      } else if (isImage) {
-        const printWindow = window.open('', '_blank');
-        printWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>${name || 'Document'}</title>
-              <style>
-                body { margin: 0; padding: 20px; text-align: center; background: #f5f5f5; }
-                img { max-width: 100%; height: auto; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-              </style>
-            </head>
-            <body>
-              <img src="${dataUrl}" alt="${name || 'Document'}" />
-              <script>window.onload = function() { window.focus(); }</script>
-            </body>
-          </html>
-        `);
-        printWindow.document.close();
-      }
-    } else if (isText) {
-      // For text files, open in a new window with formatted text
-      try {
-        const base64 = dataUrl.split(',')[1] || '';
-        const textContent = atob(base64);
-        const printWindow = window.open('', '_blank');
-        printWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>${name || 'Document'}</title>
-              <style>
-                body { margin: 0; padding: 20px; font-family: monospace; background: white; }
-                pre { white-space: pre-wrap; word-wrap: break-word; }
-              </style>
-            </head>
-            <body>
-              <pre>${textContent.replace(/[&<>]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]))}</pre>
-            </body>
-          </html>
-        `);
-        printWindow.document.close();
-      } catch (err) {
-        window.open(dataUrl, '_blank');
-      }
-    } else if (isOffice) {
-      // For Office documents, open for download/viewing
-      const officeType = isWord ? 'Word' : isExcel ? 'Excel' : 'PowerPoint';
-      toast.info(`Opening ${officeType} document. Use File > Print in your application to print.`);
-      
-      // Create a download link
-      const link = document.createElement('a');
-      link.href = dataUrl;
-      link.download = name || 'document';
-      link.target = '_blank';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } else {
-      // For other formats, try to open directly
-      // Use blob URL for safety (handles large files)
-      const blobUrl = convertDataUrlToBlob(dataUrl);
-      const printWindow = window.open(blobUrl, '_blank');
-      
-      // Cleanup blob URL after window loads
-      if (blobUrl !== dataUrl && printWindow) {
-        printWindow.addEventListener('load', () => {
-          setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-        });
-      }
-    }
-  };
-
-  const handlePrintDocument = (job) => {
-    // Use cached document first, fallback to job document
-    const documentData = cachedDocument || job?.document;
-    if (!documentData?.dataUrl) {
-      toast.warning('Document not available for printing');
-      return;
-    }
-
-    const { dataUrl, mimeType, name } = documentData;
-    const isPdf = (mimeType || '').includes('pdf');
-    const isImage = (mimeType || '').startsWith('image/');
-    const isText = (mimeType || '').includes('text/');
-    const isWord = /msword|wordprocessingml/.test(mimeType || '');
-    const isExcel = /excel|spreadsheetml/.test(mimeType || '');
-    const isPowerPoint = /powerpoint|presentationml/.test(mimeType || '');
-    const isOffice = isWord || isExcel || isPowerPoint;
-
-    // For PDFs, open and print
-    if (isPdf) {
-      // Convert to blob URL for PDFs (avoids data URL size limits)
-      const blobUrl = convertDataUrlToBlob(dataUrl);
-      const printWindow = window.open(blobUrl, '_blank');
-      
-      if (printWindow) {
-        printWindow.addEventListener('load', () => {
-          setTimeout(() => {
-            printWindow.print();
-            // Cleanup blob URL after print dialog closes
-            if (blobUrl !== dataUrl) {
-              setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-            }
-          }, 1000);
-        });
-      }
-    } else if (isImage) {
-      // For images, open in a new window and print
-      const printWindow = window.open('', '_blank');
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>${name || 'Document'}</title>
-            <style>
-              body { margin: 0; padding: 20px; text-align: center; }
-              img { max-width: 100%; height: auto; }
-              @media print { body { padding: 0; } }
-            </style>
-          </head>
-          <body>
-            <img src="${dataUrl}" alt="${name || 'Document'}" />
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-      printWindow.addEventListener('load', () => {
-        setTimeout(() => printWindow.print(), 500);
-      });
-    } else if (isText) {
-      // For text files, open and print
-      try {
-        const base64 = dataUrl.split(',')[1] || '';
-        const textContent = atob(base64);
-        const printWindow = window.open('', '_blank');
-        printWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>${name || 'Document'}</title>
-              <style>
-                body { margin: 0; padding: 20px; font-family: monospace; }
-                pre { white-space: pre-wrap; word-wrap: break-word; }
-              </style>
-            </head>
-            <body>
-              <pre>${textContent.replace(/[&<>]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]))}</pre>
-            </body>
-          </html>
-        `);
-        printWindow.document.close();
-        printWindow.addEventListener('load', () => {
-          setTimeout(() => printWindow.print(), 500);
-        });
-      } catch (err) {
-        toast.error('Unable to print text document');
-      }
-    } else if (isOffice) {
-      // For Office documents, download and inform user
-      toast.info('Office documents need to be opened in their native application to print. Downloading file...');
-      const link = document.createElement('a');
-      link.href = dataUrl;
-      link.download = name || 'document';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } else {
-      // For other formats, try to open and print
-      // Use blob URL for safety (handles large files)
-      const blobUrl = convertDataUrlToBlob(dataUrl);
-      const printWindow = window.open(blobUrl, '_blank');
-      if (printWindow) {
-        printWindow.addEventListener('load', () => {
-          setTimeout(() => {
-            printWindow.print();
-            // Cleanup blob URL
-            if (blobUrl !== dataUrl) {
-              setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-            }
-          }, 1000);
-        });
-      }
-    }
-  };
-
-  const getInitials = (name) => {
-    return name
-      ?.split(' ')
-      .map(word => word[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2) || 'U';
   };
 
   return (
     <ReleaseContainer>
-      <PageHeader>
-        <h1>Secure Print Release</h1>
-        <p>Authenticate and release your print jobs at any compatible printer</p>
-      </PageHeader>
+      <GlassOrbo layout>
+        <Header>
+          <h1><FaPrint /> Print Release Station</h1>
+          {user && <span className="badge">User: {user.name}</span>}
+        </Header>
 
-      <PrinterInterface>
-        <PrinterHeader>
-          <div className="printer-name">Main Office Printer</div>
-          <div className="printer-status">
-            <div className="status-dot"></div>
-            <span>Online & Ready</span>
-          </div>
-        </PrinterHeader>
-
-        {!authenticatedUser ? (
-          <>
-            <AuthSection>
-              <AuthMethod 
-                className={authMethod === 'pin' ? 'active' : ''}
-                onClick={() => setAuthMethod('pin')}
-              >
-                <FaKey className="auth-icon" />
-                <div className="auth-title">PIN Authentication</div>
-                <div className="auth-description">
-                  Enter your 4-digit PIN to access your print jobs
-                </div>
-              </AuthMethod>
-
-              <AuthMethod 
-                className={authMethod === 'qr' ? 'active' : ''}
-                onClick={() => setAuthMethod('qr')}
-              >
-                <FaQrcode className="auth-icon" />
-                <div className="auth-title">QR Code Scan</div>
-                <div className="auth-description">
-                  Scan QR code from mobile app for instant access
-                </div>
-              </AuthMethod>
-            </AuthSection>
-
-            {authMethod === 'pin' && (
-              <div style={{ textAlign: 'center' }}>
-                <PinInput>
-                  {pin.map((digit, index) => (
-                    <input
-                      key={index}
-                      type="text"
-                      maxLength="1"
-                      value={digit}
-                      onChange={(e) => handlePinChange(index, e.target.value)}
-                      ref={(el) => setPinInputs(prev => { prev[index] = el; return prev; })}
-                      autoFocus={index === 0}
-                      placeholder="•"
-                    />
-                  ))}
-                </PinInput>
-                <ActionButton 
-                  className="primary" 
-                  onClick={handlePinSubmit}
-                  disabled={loading || pin.join('').length !== 4}
-                >
-                  {loading ? 'Authenticating...' : 'Authenticate'}
-                </ActionButton>
-              </div>
-            )}
-
-            {authMethod === 'qr' && (
-              <QRCodeDisplay>
-                <div className="qr-code">
-                  <QRCodeCanvas 
-                    value={JSON.stringify({
-                      type: 'secure-print-release',
-                      timestamp: Date.now(),
-                      sessionId: Math.random().toString(36).substr(2, 9)
-                    })} 
-                    size={200} 
-                  />
-                </div>
-                <div className="qr-instructions">
-                  Open the Secure Print Link mobile app and scan this QR code to authenticate automatically.
-                  <br />
-                  <strong>Demo PIN:</strong> 1234 (Admin), 5678 (User 1), 9012 (User 2)
-                </div>
-              </QRCodeDisplay>
-            )}
-          </>
-        ) : (
-          <>
-            <UserInfo>
-              <div className="user-avatar">
-                {getInitials(authenticatedUser.name)}
-              </div>
-              <div className="user-details">
-                <div className="user-name">{authenticatedUser.name}</div>
-                <div className="user-role">{authenticatedUser.role} • {authenticatedUser.department}</div>
-              </div>
-            </UserInfo>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px' }}>
-                Select Printer:
-              </label>
-              <select
-                value={selectedPrinter?.id || ''}
-                onChange={(e) => {
-                  const printer = printers.find(p => p.id === parseInt(e.target.value));
-                  setSelectedPrinter(printer);
-                }}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  borderRadius: '8px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: '1px solid rgba(255, 255, 255, 0.3)',
-                  color: 'white',
-                  fontSize: '14px'
-                }}
-              >
-                <option value="">Choose a printer...</option>
-                {printers.filter(p => p.status === 'online').map(printer => (
-                  <option key={printer.id} value={printer.id}>
-                    {printer.name} - {printer.location}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <JobsSection>
-              <JobsHeader>
-                <div className="jobs-title">Your Print Jobs</div>
-                <div className="jobs-count">{userJobs.length} pending</div>
-              </JobsHeader>
-
-              {userJobs.length > 0 ? (
+        <AnimatePresence mode="wait">
+          {step === 'auth' && (
+            <ContentArea key="auth" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              {!authMethod ? (
                 <>
-                  <JobList>
-                    {jobsWithDocuments.map(job => (
-                      <JobItem key={job.id} style={{ flexDirection: 'column', alignItems: 'stretch' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                          <div className="job-info">
-                            <div className="job-icon">
-                              <FaPrint />
-                            </div>
-                            <div className="job-details">
-                              <div className="job-name">{job.documentName || 'Document'}</div>
-                              <div className="job-meta">
-                                {formatDate(job.submittedAt)} • {job.pages} pages • {job.copies} copies • ${job.cost}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="job-actions">
-                            <ActionButton 
-                              className="secondary"
-                              onClick={() => job.document?.dataUrl ? handleViewDocument(job) : toast.info('Document preview not available. Release the job to print.')}
-                              title={job.document?.dataUrl ? "View Document" : "No preview available"}
-                              style={{ padding: '8px 12px', minWidth: 'auto', opacity: job.document?.dataUrl ? 1 : 0.6 }}
-                            >
-                              <FaEye style={{ marginRight: '4px' }} />
-                              View
-                            </ActionButton>
-                            <ActionButton 
-                              className="secondary"
-                              onClick={() => job.document?.dataUrl ? handlePrintDocument(job) : toast.info('Document not available. Release the job first.')}
-                              title={job.document?.dataUrl ? "Print Document" : "No preview available"}
-                              style={{ padding: '8px 12px', minWidth: 'auto', opacity: job.document?.dataUrl ? 1 : 0.6 }}
-                            >
-                              <FaPrint style={{ marginRight: '4px' }} />
-                              Print
-                            </ActionButton>
-                            <ActionButton 
-                              className="primary"
-                              onClick={() => handleReleaseJob(job.id)}
-                              disabled={loading || !selectedPrinter}
-                              title="Release job to printer (document will be available after release)"
-                            >
-                              Release
-                            </ActionButton>
-                          </div>
-                        </div>
-
-                        {job.analysis && (
-                          <AnalysisSection>
-                            <div className="analysis-header">
-                              <FaChartBar /> Document Analysis
-                            </div>
-                            <div className="analysis-grid">
-                              <div className="analysis-item">
-                                <div className="analysis-label">Estimated Word Count</div>
-                                <div className="analysis-value">{job.analysis.wordCount?.toLocaleString() || 'N/A'}</div>
-                              </div>
-                              <div className="analysis-item">
-                                <div className="analysis-label">Analysis Status</div>
-                                <div className="analysis-value">{job.analysis.status || 'Completed'}</div>
-                              </div>
-                              <div className="analysis-item">
-                                <div className="analysis-label">Features Detected</div>
-                                <div className="analysis-value">{job.analysis.features?.length || 0}</div>
-                              </div>
-                            </div>
-                          </AnalysisSection>
-                        )}
-                      </JobItem>
-                    ))}
-                  </JobList>
-                  
-                  <div style={{ marginTop: '20px', textAlign: 'center' }}>
-                    <ActionButton 
-                      className="primary"
-                      onClick={handleReleaseAll}
-                      disabled={loading || !selectedPrinter || jobsWithDocuments.length === 0}
-                    >
-                      {loading ? 'Releasing...' : `Release All Jobs (${jobsWithDocuments.length})`}
-                    </ActionButton>
-                  </div>
+                  <h2 style={{ color: 'white', marginBottom: '32px' }}>Select Authentication Method</h2>
+                  <AuthGrid>
+                    <AuthMethodCard onClick={() => setAuthMethod('pin')}>
+                      <div className="icon"><FaKey /></div>
+                      <h3>PIN Code</h3>
+                      <p>Enter your 4-digit security PIN</p>
+                    </AuthMethodCard>
+                    <AuthMethodCard onClick={() => setAuthMethod('qr')}>
+                      <div className="icon"><FaQrcode /></div>
+                      <h3>Scan Badge/QR</h3>
+                      <p>Scan your ID badge or mobile app</p>
+                    </AuthMethodCard>
+                  </AuthGrid>
                 </>
-              ) : (
-                <EmptyState>
-                  <FaPrint className="empty-icon" />
-                  <div className="empty-title">No pending print jobs</div>
-                  <div className="empty-description">
-                    All your print jobs have been released or completed
+              ) : authMethod === 'pin' ? (
+                <Screen>
+                  <h2 style={{ color: 'white', marginBottom: '24px' }}>Enter PIN</h2>
+                  <div style={{ fontSize: '32px', color: 'white', marginBottom: '32px', letterSpacing: '10px' }}>
+                    {pin.padEnd(4, '•').replace(/./g, (c, i) => i < pin.length ? '*' : '•')}
                   </div>
-                </EmptyState>
+                  <PinPad>
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => (
+                      <button key={n} onClick={() => handlePinPress(String(n))}>{n}</button>
+                    ))}
+                    <button onClick={() => handlePinPress('clear')} style={{ color: '#f87171' }}>C</button>
+                    <button onClick={() => handlePinPress('0')}>0</button>
+                    <button onClick={() => setAuthMethod(null)} style={{ color: '#94a3b8' }}><FaArrowLeft /></button>
+                    <button className="wide" onClick={() => handlePinPress('enter')}
+                      style={{ background: 'var(--primary)' }}>Enter</button>
+                  </PinPad>
+                </Screen>
+              ) : (
+                <Screen>
+                  <h2 style={{ color: 'white', marginBottom: '24px' }}>Scan QR Code</h2>
+                  <div style={{ background: 'white', padding: '20px', borderRadius: '16px' }}>
+                    <QRCodeCanvas value="simulate-scan-here" size={200} />
+                  </div>
+                  <p style={{ color: 'var(--text-secondary)', marginTop: '20px' }}>
+                    Waiting for scan... (Click 'PIN' for demo)
+                  </p>
+                  <button onClick={() => setAuthMethod(null)}
+                    style={{ marginTop: '20px', background: 'none', color: 'white', border: 'none', cursor: 'pointer' }}>
+                    Cancel
+                  </button>
+                </Screen>
               )}
-            </JobsSection>
+            </ContentArea>
+          )}
 
-            <div style={{ textAlign: 'center', marginTop: '20px' }}>
-              <ActionButton 
-                className="secondary"
-                onClick={() => {
-                  setAuthenticatedUser(null);
-                  setAuthMethod(null);
-                  setSelectedPrinter(null);
-                }}
+          {step === 'jobs' && (
+            <ContentArea key="jobs" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }}>
+              <div style={{ width: '100%', maxWidth: '800px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between' }}>
+                <h2 style={{ color: 'white' }}>Select Jobs to Print</h2>
+                <button onClick={() => { setSelectedJobs(getUserJobs().map(j => j.id)) }}
+                  style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer' }}>
+                  Select All
+                </button>
+              </div>
+
+              <JobsList>
+                {getUserJobs().length > 0 ? getUserJobs().map(job => (
+                  <JobRow key={job.id} onClick={() => toggleJob(job.id)}>
+                    <div className={`checkbox ${selectedJobs.includes(job.id) ? 'checked' : ''}`}>
+                      {selectedJobs.includes(job.id) && <FaCheckCircle />}
+                    </div>
+                    <div className="icon" style={{ marginRight: '16px', fontSize: '24px', color: 'var(--text-secondary)' }}>
+                      <FaFileAlt />
+                    </div>
+                    <div className="info">
+                      <h4>{job.documentName}</h4>
+                      <p>{job.pages} pages • {new Date(job.submittedAt).toLocaleDateString()}</p>
+                    </div>
+                    <div className="cost">${job.cost.toFixed(2)}</div>
+                  </JobRow>
+                )) : (
+                  <div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '40px' }}>
+                    No pending jobs found.
+                  </div>
+                )}
+              </JobsList>
+
+              <PrinterSelect
+                value={selectedPrinter}
+                onChange={(e) => setSelectedPrinter(e.target.value)}
               >
-                Sign Out
+                <option value="">-- Select Printer --</option>
+                {printers.filter(p => p.status === 'online').map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </PrinterSelect>
+
+              <ActionButton
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleRelease}
+                disabled={selectedJobs.length === 0}
+              >
+                <FaPrint /> Release {selectedJobs.length} Jobs
               </ActionButton>
-            </div>
-          </>
-        )}
-      </PrinterInterface>
+            </ContentArea>
+          )}
+
+          {step === 'releasing' && (
+            <ContentArea key="releasing" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
+                style={{ fontSize: '64px', color: 'var(--primary)', marginBottom: '24px' }}
+              >
+                <FaPrint />
+              </motion.div>
+              <h2 style={{ color: 'white' }}>Releasing Jobs...</h2>
+            </ContentArea>
+          )}
+
+          {step === 'success' && (
+            <ContentArea key="success" initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+              <div style={{ fontSize: '80px', color: '#10b981', marginBottom: '24px' }}>
+                <FaCheckCircle />
+              </div>
+              <h2 style={{ color: 'white', marginBottom: '16px' }}>Print Jobs Released!</h2>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '32px' }}>
+                Please collect your documents from the printer.
+              </p>
+              <ActionButton onClick={() => navigate('/dashboard')}>
+                Return to Dashboard
+              </ActionButton>
+            </ContentArea>
+          )}
+        </AnimatePresence>
+
+      </GlassOrbo>
     </ReleaseContainer>
   );
 };

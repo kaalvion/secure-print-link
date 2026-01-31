@@ -1,32 +1,32 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
-import { useAuth } from '../context/AuthContext';
-import { 
-  FaBars, 
-  FaUser, 
-  FaBell, 
-  FaCog, 
+import { useUser, useClerk } from '@clerk/clerk-react';
+import {
+  FaBars,
+  FaUser,
+  FaBell,
+  FaCog,
   FaSignOutAlt,
   FaPrint,
   FaShieldAlt
 } from 'react-icons/fa';
 
 const HeaderContainer = styled.header`
-  background: var(--background-card);
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--text-primary);
   padding: 0 24px;
   height: 64px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: var(--shadow-sm);
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  z-index: 1000;
-  border-bottom: 1px solid var(--border-color);
+  z-index: 800; /* Below sidebar on desktop, handled via padding in main */
 `;
 
 const LeftSection = styled.div`
@@ -242,13 +242,14 @@ const DropdownItem = styled.button`
 `;
 
 const Header = ({ onMenuToggle }) => {
-  const { currentUser, logout } = useAuth();
+  const { user } = useUser();
+  const { signOut } = useClerk();
   const navigate = useNavigate();
   const [showDropdown, setShowDropdown] = useState(false);
   const [notifications] = useState(3); // Mock notification count
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await signOut();
     navigate('/login');
     setShowDropdown(false);
   };
@@ -301,12 +302,12 @@ const Header = ({ onMenuToggle }) => {
 
         <UserSection>
           <UserInfo>
-            <div className="user-name">{currentUser?.name}</div>
-            <div className="user-role">{currentUser?.role}</div>
+            <div className="user-name">{user?.fullName || user?.username}</div>
+            <div className="user-role">{user?.publicMetadata?.role || 'User'}</div>
           </UserInfo>
-          
+
           <UserAvatar onClick={() => setShowDropdown(!showDropdown)}>
-            {getInitials(currentUser?.name || 'U')}
+            {getInitials(user?.fullName || user?.username || 'U')}
           </UserAvatar>
 
           {showDropdown && (

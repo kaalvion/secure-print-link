@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import styled from 'styled-components';
 import { useChat } from '../context/ChatContext';
-import { useAuth } from '../context/AuthContext';
+import { useUser } from '@clerk/clerk-react';
 import { FaPaperPlane, FaCircle, FaComments, FaTimes } from 'react-icons/fa';
 
 const ChatContainer = styled.div`
@@ -280,7 +280,7 @@ const EmptyState = styled.div`
 `;
 
 const ChatWindow = ({ conversation, onClose }) => {
-  const { currentUser } = useAuth();
+  const { user: currentUser } = useUser();
   const { messages, sendMessage, loadMessages, sendTyping, markMessagesAsRead, typingUsers, onlineUsers } = useChat();
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);

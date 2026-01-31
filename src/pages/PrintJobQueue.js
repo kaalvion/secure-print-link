@@ -1,668 +1,448 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { toast } from 'react-toastify';
-import { useAuth } from '../context/AuthContext';
+import { useUser } from '@clerk/clerk-react';
 import { usePrintJob } from '../context/PrintJobContext';
-import { useNavigate } from 'react-router-dom';
+
+import { motion, AnimatePresence } from 'framer-motion';
 import EmptyState from '../components/EmptyState';
-import { 
-  FaPrint, 
-  FaTrash, 
-  FaEye, 
-  FaTimes,
+import {
+  FaPrint,
+  FaTrash,
+  FaEye,
   FaCheckCircle,
-  FaExclamationTriangle,
   FaClock,
   FaFileAlt,
-  FaSearch,
-  FaSort
+  FaSearch
 } from 'react-icons/fa';
 
 const QueueContainer = styled.div`
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xl);
+  gap: 32px;
+  padding-bottom: 40px;
 `;
 
-const PageHeader = styled.div`
+const PageHeader = styled(motion.div)`
+  margin-bottom: 8px;
+  
   h1 {
-    font-size: var(--font-size-xxxl);
+    font-size: 3rem;
     font-weight: 800;
-    color: var(--text-primary);
-    margin-bottom: var(--spacing-xs);
-    letter-spacing: -0.025em;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
   }
   
   p {
     color: var(--text-secondary);
-    font-size: var(--font-size-md);
+    font-size: 1.1rem;
+    max-width: 600px;
   }
 `;
 
-const ControlsSection = styled.div`
-  background: var(--background-card);
-  border-radius: var(--border-radius-lg);
-  padding: var(--spacing-xl);
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border-color);
-`;
-
-const ControlsGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: var(--spacing-lg);
-  align-items: flex-end;
-`;
-
-const ControlGroup = styled.div`
+const Toolbar = styled(motion.div)`
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 20px;
   display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-  
-  label {
-    font-size: var(--font-size-sm);
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-  
-  .input-wrapper {
-    position: relative;
-    display: flex;
-    align-items: center;
-    
-    .input-icon {
-      position: absolute;
-      left: 12px;
-      color: var(--text-light);
-      font-size: 14px;
-    }
-    
-    input, select {
-      width: 100%;
-      padding: 10px 12px;
-      padding-left: ${props => props.hasIcon ? '36px' : '12px'};
-      background: var(--background-light);
-      border: 1px solid var(--border-color);
-      border-radius: var(--border-radius-md);
-      font-size: var(--font-size-sm);
-      color: var(--text-primary);
-      transition: all var(--transition-fast);
-      
-      &:focus {
-        border-color: var(--primary-color);
-        background: white;
-        box-shadow: 0 0 0 3px var(--primary-color)15;
-      }
-    }
-  }
-`;
-
-const SortSection = styled.div`
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
   flex-wrap: wrap;
-  
-  .sort-label {
-    font-size: var(--font-size-sm);
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin-right: var(--spacing-xs);
-  }
-`;
-
-const SortButton = styled.button`
-  display: flex;
+  gap: 20px;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: var(--background-light);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-md);
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  transition: all var(--transition-fast);
+  justify-content: space-between;
+`;
+
+const SearchBox = styled.div`
+  position: relative;
+  flex: 1;
+  min-width: 300px;
   
-  &:hover {
-    background: white;
-    border-color: var(--primary-color);
-    color: var(--primary-color);
+  .icon {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-secondary);
   }
   
-  &.active {
-    background: var(--primary-color);
+  input {
+    width: 100%;
+    padding: 12px 16px 12px 48px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
     color: white;
-    border-color: var(--primary-color);
-    box-shadow: var(--shadow-sm);
+    font-size: 0.95rem;
+    transition: all 0.2s;
+    
+    &:focus {
+      outline: none;
+      border-color: var(--primary);
+      background: rgba(0, 0, 0, 0.3);
+    }
   }
 `;
 
-const JobsContainer = styled.div`
-  background: var(--background-card);
-  border-radius: var(--border-radius-lg);
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border-color);
-  overflow: hidden;
-`;
-
-const JobList = styled.div`
+const FilterGroup = styled.div`
   display: flex;
-  flex-direction: column;
+  gap: 12px;
+  flex-wrap: wrap;
+
+  select {
+    padding: 12px 16px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    color: white;
+    font-size: 0.9rem;
+    cursor: pointer;
+    
+    &:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    option {
+      background: var(--bg-dark);
+    }
+  }
 `;
 
-const JobItem = styled.div`
+const JobCard = styled(motion.div)`
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  padding: 24px;
   display: grid;
   grid-template-columns: auto 1fr auto;
+  gap: 24px;
   align-items: center;
-  gap: var(--spacing-xl);
-  padding: var(--spacing-lg) var(--spacing-xl);
-  border-bottom: 1px solid var(--border-color);
-  transition: all var(--transition-fast);
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
   
   &:hover {
-    background: var(--background-light);
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.3);
   }
   
-  &:last-child {
-    border-bottom: none;
-  }
-  
-  @media (max-width: 992px) {
+  @media (max-width: 768px) {
     grid-template-columns: 1fr;
-    gap: var(--spacing-md);
-    padding: var(--spacing-lg);
+    gap: 16px;
   }
 `;
 
-const JobInfo = styled.div`
-  min-width: 0;
+const JobIcon = styled.div`
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  background: ${props => props.bg || 'rgba(59, 130, 246, 0.1)'};
+  color: ${props => props.color || 'var(--primary)'};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+`;
+
+const JobContent = styled.div`
+  min-width: 0; 
   
-  .job-title {
-    font-size: var(--font-size-lg);
-    font-weight: 700;
-    color: var(--text-primary);
-    margin-bottom: 4px;
-    letter-spacing: -0.01em;
+  h3 {
+    font-size: 1.2rem;
+    color: white;
+    margin-bottom: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   
-  .job-details {
+  .meta {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--spacing-md);
-    row-gap: 4px;
+    gap: 16px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
     
-    .detail-item {
+    span {
       display: flex;
       align-items: center;
       gap: 6px;
-      font-size: var(--font-size-sm);
-      color: var(--text-secondary);
-      font-weight: 500;
-      
-      .dot {
-        width: 4px;
-        height: 4px;
-        border-radius: 50%;
-        background: var(--text-light);
-      }
+    }
+    
+    .dot {
+      width: 4px;
+      height: 4px;
+      background: var(--text-secondary);
+      border-radius: 50%;
+      align-self: center;
     }
   }
 `;
 
-const JobStatus = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  min-width: 120px;
+const StatusBadge = styled.span`
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  width: fit-content;
   
-  .status-badge {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 14px;
-    border-radius: 9999px;
-    font-size: var(--font-size-xs);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.025em;
-    
-    &.pending { background: #fef3c7; color: #92400e; }
-    &.released { background: #e0f2fe; color: #075985; }
-    &.printing { background: #e0f2fe; color: #075985; }
-    &.completed { background: #dcfce7; color: #166534; }
-    &.cancelled { background: #fee2e2; color: #991b1b; }
-  }
-  
-  .job-cost {
-    font-size: var(--font-size-md);
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-  
-  @media (max-width: 992px) {
-    flex-direction: row;
-    justify-content: space-between;
-    width: 100%;
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: var(--spacing-md);
-  }
+  &.pending { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+  &.printing { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+  &.completed { background: rgba(52, 211, 153, 0.2); color: #34d399; }
+  &.cancelled { background: rgba(248, 113, 113, 0.2); color: #f87171; }
+  &.released { background: rgba(167, 139, 250, 0.2); color: #a78bfa; }
 `;
 
-const JobActions = styled.div`
+const ActionButtons = styled.div`
   display: flex;
-  gap: var(--spacing-sm);
+  gap: 12px;
   
-  @media (max-width: 992px) {
+  @media (max-width: 768px) {
     justify-content: flex-end;
-    width: 100%;
   }
 `;
 
-const ActionButton = styled.button`
-  width: 40px;
-  height: 40px;
+const IconButton = styled(motion.button)`
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: white;
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-md);
-  color: var(--text-secondary);
-  font-size: 16px;
-  transition: all var(--transition-fast);
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s;
   
   &:hover:not(:disabled) {
-    border-color: var(--primary-color);
-    color: var(--primary-color);
-    background: var(--background-light);
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-sm);
+    background: white;
+    color: var(--primary);
   }
   
   &.danger:hover:not(:disabled) {
-    border-color: var(--error-color);
-    color: var(--error-color);
-    background: #fef2f2;
+    background: #fee2e2;
+    color: #dc2626;
+    border-color: #fee2e2;
   }
   
   &.success:hover:not(:disabled) {
-    border-color: var(--success-color);
-    color: var(--success-color);
-    background: #f0fdf4;
+    background: #dcfce7;
+    color: #16a34a;
+    border-color: #dcfce7;
   }
   
   &:disabled {
-    opacity: 0.4;
+    opacity: 0.3;
     cursor: not-allowed;
-    background: var(--background-light);
-  }
-`;
-
-const LoadingWrapper = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 80px;
-  gap: var(--spacing-md);
-  color: var(--text-secondary);
-  font-weight: 600;
-  
-  .spinner {
-    width: 40px;
-    height: 40px;
-    border: 3px solid var(--background-light);
-    border-top-color: var(--primary-color);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-  }
-  
-  @keyframes spin {
-    to { transform: rotate(360deg); }
   }
 `;
 
 const PrintJobQueue = () => {
-  const { currentUser } = useAuth();
+  const { user } = useUser();
   const { printJobs, deletePrintJob, viewPrintJob, releasePrintJob, printers } = usePrintJob();
-  const navigate = useNavigate();
   const [filteredJobs, setFilteredJobs] = useState([]);
-  const [filters, setFilters] = useState({
-    status: 'all',
-    priority: 'all',
-    search: ''
-  });
-  const [sortBy, setSortBy] = useState('submittedAt');
-  const [sortOrder, setSortOrder] = useState('desc');
-  const [userJobs, setUserJobs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState({ status: 'all', priority: 'all', search: '' });
+  // const [loading, setLoading] = useState(true);
 
-  // Filter user's jobs only
   useEffect(() => {
-    if (printJobs && currentUser?.id) {
-      const userJobs = printJobs.filter(job => job.userId === currentUser.id);
-      setUserJobs(userJobs);
-      setLoading(false);
-    }
-  }, [printJobs, currentUser]);
+    if (printJobs && user?.id) {
+      let result = printJobs.filter(job => job.userId === user.id);
 
-  // Apply filters and sorting
-  useEffect(() => {
-    if (!userJobs.length) return;
-    
-    let jobs = [...userJobs];
-    
-    // Apply filters
-    if (filters.status !== 'all') {
-      jobs = jobs.filter(job => job.status === filters.status);
-    }
-    if (filters.priority !== 'all') {
-      jobs = jobs.filter(job => job.priority === filters.priority);
-    }
-    if (filters.search) {
-      jobs = jobs.filter(job => 
-        job.documentName?.toLowerCase().includes(filters.search.toLowerCase()) ||
-        job.notes?.toLowerCase().includes(filters.search.toLowerCase())
-      );
-    }
-    
-    // Apply sorting
-    jobs.sort((a, b) => {
-      let aValue = a[sortBy];
-      let bValue = b[sortBy];
-      
-      if (sortBy === 'submittedAt' || sortBy === 'releasedAt' || sortBy === 'completedAt') {
-        aValue = new Date(aValue || 0);
-        bValue = new Date(bValue || 0);
+      if (filters.status !== 'all') {
+        result = result.filter(job => job.status === filters.status);
       }
-      
-      if (sortOrder === 'asc') {
-        return aValue > bValue ? 1 : -1;
-      } else {
-        return aValue < bValue ? 1 : -1;
+      if (filters.priority !== 'all') {
+        result = result.filter(job => job.priority === filters.priority);
       }
-    });
-    
-    setFilteredJobs(jobs);
-  }, [userJobs, filters, sortBy, sortOrder]);
+      if (filters.search) {
+        const term = filters.search.toLowerCase();
+        result = result.filter(job =>
+          job.documentName?.toLowerCase().includes(term) ||
+          job.notes?.toLowerCase().includes(term)
+        );
+      }
+
+      // Sort: Newest first
+      result.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+
+      setFilteredJobs(result);
+    }
+  }, [printJobs, user, filters]);
 
   const handleDeleteJob = async (jobId) => {
-    if (window.confirm('Are you sure you want to delete this print job? This cannot be undone.')) {
+    if (window.confirm('Delete this job?')) {
       try {
         await deletePrintJob(jobId);
-        toast.success('Print job deleted successfully');
+        toast.success('Job deleted');
       } catch (error) {
-        toast.error('Failed to delete print job: ' + error.message);
+        toast.error(error.message);
       }
     }
   };
 
-  const handleViewJob = async (jobId) => {
-    const job = filteredJobs.find(j => j.id === jobId);
-    if (!job) {
-      toast.error('Job not found.');
-      return;
-    }
-    
-    if (job.viewCount > 0) {
-      toast.error('Document already viewed (one-time only)');
-      return;
-    }
-
+  const handleViewJob = async (jobId, job) => {
+    if (job.viewCount > 0) return toast.error('Already viewed');
     try {
-      const documentData = await viewPrintJob(jobId, job.secureToken, currentUser.id);
-      if (documentData?.dataUrl) {
-        // Open in new tab for preview (not download)
-        window.open(documentData.dataUrl, '_blank');
-      } else {
-        toast.error('Document data not available for viewing.');
-      }
+      const data = await viewPrintJob(jobId, job.secureToken, user.id);
+      if (data?.dataUrl) window.open(data.dataUrl, '_blank');
     } catch (error) {
-      if (error.message === 'Document already viewed') {
-        // Already handled by viewPrintJob
-        return;
-      }
-      toast.error('Failed to view document: ' + error.message);
+      if (error.message !== 'Document already viewed') toast.error(error.message);
     }
   };
 
-  const handleReleaseJob = async (jobId) => {
-    const job = filteredJobs.find(j => j.id === jobId);
-    if (!job) return;
-
-    // Find an online printer (default)
+  const handleReleaseJob = async (jobId, job) => {
     const printer = printers.find(p => p.status === 'online') || { id: 1 };
-
-    setLoading(true);
     try {
-      await releasePrintJob(jobId, printer.id, currentUser.id, job.secureToken);
-      // No toast here, Context handles it
-    } catch (error) {
-      // Context handles toast
-    } finally {
-      setLoading(false);
+      await releasePrintJob(jobId, printer.id, user.id, job.secureToken);
+      // Toast handled by context
+    } catch (err) {
+      // Handled by context
     }
   };
 
-  const handleSort = (field) => {
-    if (sortBy === field) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(field);
-      setSortOrder('desc');
+  const getPriorityColor = (p) => {
+    switch (p) {
+      case 'high': return '#f87171';
+      case 'urgent': return '#ef4444';
+      case 'low': return '#94a3b8';
+      default: return '#60a5fa';
     }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'pending': return <FaClock />;
-      case 'printing': return <FaPrint />;
-      case 'completed': return <FaCheckCircle />;
-      case 'cancelled': return <FaExclamationTriangle />;
-      default: return <FaFileAlt />;
-    }
-  };
-
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case 'high': return '#e74c3c';
-      case 'normal': return '#3498db';
-      case 'low': return '#95a5a6';
-      default: return '#7f8c8d';
-    }
-  };
-
-  if (loading) {
-    return (
-      <QueueContainer>
-        <LoadingWrapper>
-          <div className="spinner" />
-          <div>Loading your secure print jobs...</div>
-        </LoadingWrapper>
-      </QueueContainer>
-    );
-  }
-
-  // Determine empty state type
-  let emptyStateType = 'jobs';
-  let emptyStateAction = null;
-  let emptyStateActionText = 'Submit Print Job';
-  
-  if (filters.status !== 'all' || filters.search || filters.priority !== 'all') {
-    emptyStateType = 'search';
-  } else {
-    emptyStateAction = () => navigate('/submit-job');
-  }
+  const formatDate = (date) => new Date(date).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
 
   return (
     <QueueContainer>
-      <PageHeader>
-        <h1>Print Job Queue</h1>
-        <p>Manage and track your secure print jobs</p>
+      <PageHeader initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
+        <h1>Print Queue</h1>
+        <p>Manage your secure print jobs in real-time</p>
       </PageHeader>
 
-      <ControlsSection>
-        <ControlsGrid>
-          <ControlGroup hasIcon>
-            <label htmlFor="search">Search Jobs</label>
-            <div className="input-wrapper">
-              <FaSearch className="input-icon" />
-              <input
-                id="search"
-                type="text"
-                placeholder="Search documents..."
-                value={filters.search}
-                onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-              />
-            </div>
-          </ControlGroup>
+      <Toolbar initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}>
+        <SearchBox>
+          <FaSearch className="icon" />
+          <input
+            placeholder="Search documents..."
+            value={filters.search}
+            onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+          />
+        </SearchBox>
 
-          <ControlGroup>
-            <label htmlFor="status">Status</label>
-            <div className="input-wrapper">
-              <select
-                id="status"
-                value={filters.status}
-                onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
+        <FilterGroup>
+          <select
+            value={filters.status}
+            onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+          >
+            <option value="all">Status: All</option>
+            <option value="pending">Pending</option>
+            <option value="printing">Printing</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+
+          <select
+            value={filters.priority}
+            onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
+          >
+            <option value="all">Priority: All</option>
+            <option value="high">High</option>
+            <option value="normal">Normal</option>
+            <option value="low">Low</option>
+          </select>
+        </FilterGroup>
+      </Toolbar>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <AnimatePresence mode="popLayout">
+          {filteredJobs.length > 0 ? (
+            filteredJobs.map((job) => (
+              <JobCard
+                key={job.id}
+                layout
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={{ duration: 0.2 }}
               >
-                <option value="all">All Statuses</option>
-                <option value="pending">Pending</option>
-                <option value="printing">Printing</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </div>
-          </ControlGroup>
+                <JobIcon>
+                  {job.status === 'completed' ? <FaCheckCircle /> : <FaFileAlt />}
+                </JobIcon>
 
-          <ControlGroup>
-            <label htmlFor="priority">Priority</label>
-            <div className="input-wrapper">
-              <select
-                id="priority"
-                value={filters.priority}
-                onChange={(e) => setFilters(prev => ({ ...prev, priority: e.target.value }))}
-              >
-                <option value="all">All Priorities</option>
-                <option value="high">High</option>
-                <option value="normal">Normal</option>
-                <option value="low">Low</option>
-              </select>
-            </div>
-          </ControlGroup>
-
-          <SortSection>
-            <span className="sort-label">Sort by:</span>
-            <SortButton
-              className={sortBy === 'submittedAt' ? 'active' : ''}
-              onClick={() => handleSort('submittedAt')}
-            >
-              <FaSort />
-              Date
-            </SortButton>
-            <SortButton
-              className={sortBy === 'documentName' ? 'active' : ''}
-              onClick={() => handleSort('documentName')}
-            >
-              <FaSort />
-              Name
-            </SortButton>
-          </SortSection>
-        </ControlsGrid>
-      </ControlsSection>
-
-      <JobsContainer>
-        {filteredJobs.length > 0 ? (
-          <JobList>
-            {filteredJobs.map((job) => (
-              <JobItem key={job.id}>
-                <JobStatus>
-                  <div className={`status-badge ${job.status}`}>
-                    {getStatusIcon(job.status)}
-                    {job.status}
+                <JobContent>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                    <h3 style={{ margin: 0 }}>{job.documentName}</h3>
+                    <StatusBadge className={job.status}>{job.status}</StatusBadge>
                   </div>
-                  <div className="job-cost">${job.cost?.toFixed(2) || '0.00'}</div>
-                </JobStatus>
-                
-                <JobInfo>
-                  <div className="job-title" title={job.documentName}>{job.documentName}</div>
-                  <div className="job-details">
-                    <div className="detail-item">
-                      <span>{job.pages} Pages</span>
-                      <div className="dot" />
-                      <span>{job.copies} Copies</span>
-                    </div>
-                    <div className="detail-item">
-                      <div className="dot" />
-                      <span style={{ color: getPriorityColor(job.priority) }}>
-                        {job.priority.toUpperCase()} Priority
-                      </span>
-                    </div>
-                    <div className="detail-item">
-                      <div className="dot" />
-                      <span>{formatDate(job.submittedAt)}</span>
-                    </div>
+                  <div className="meta">
+                    <span><FaClock size={12} /> {formatDate(job.submittedAt)}</span>
+                    <span className="dot" />
+                    <span>{job.pages} Pages</span>
+                    <span className="dot" />
+                    <span style={{ color: getPriorityColor(job.priority), fontWeight: 600, textTransform: 'uppercase', fontSize: '0.8rem' }}>
+                      {job.priority}
+                    </span>
                     {job.notes && (
-                      <div className="detail-item">
-                        <div className="dot" />
-                        <span>{job.notes}</span>
-                      </div>
+                      <>
+                        <span className="dot" />
+                        <span>"{job.notes}"</span>
+                      </>
                     )}
                   </div>
-                </JobInfo>
-                
-                <JobActions>
-                  <ActionButton
-                    onClick={() => handleViewJob(job.id)}
-                    disabled={job.viewCount > 0}
-                    title={job.viewCount > 0 ? 'Document already viewed (one-time only)' : 'Preview document (one-time view)'}
-                    className={job.viewCount > 0 ? 'danger' : 'success'}
-                  >
-                    {job.viewCount > 0 ? <FaTimes /> : <FaEye />}
-                  </ActionButton>
-                  
-                  {job.status === 'pending' && job.viewCount > 0 && (
-                    <ActionButton
-                      onClick={() => handleReleaseJob(job.id)}
-                      disabled={loading}
-                      title="Release this job for printing"
+                </JobContent>
+
+                <ActionButtons>
+                  {job.viewCount === 0 && (
+                    <IconButton
+                      onClick={() => handleViewJob(job.id, job)}
+                      title="Preview (One-time)"
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                    >
+                      <FaEye />
+                    </IconButton>
+                  )}
+
+                  {job.status === 'pending' && (
+                    <IconButton
                       className="success"
+                      onClick={() => handleReleaseJob(job.id, job)}
+                      title="Release Now"
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
                     >
                       <FaPrint />
-                    </ActionButton>
+                    </IconButton>
                   )}
-                  
-                  <ActionButton
-                    onClick={() => handleDeleteJob(job.id)}
-                    title="Delete this job"
+
+                  <IconButton
                     className="danger"
+                    onClick={() => handleDeleteJob(job.id)}
+                    title="Delete Job"
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
                   >
                     <FaTrash />
-                  </ActionButton>
-                </JobActions>
-              </JobItem>
-            ))}
-          </JobList>
-        ) : (
-          <EmptyState
-            type={emptyStateType}
-            action={emptyStateAction}
-            actionText={emptyStateActionText}
-            onAction={emptyStateAction}
-          />
-        )}
-      </JobsContainer>
+                  </IconButton>
+                </ActionButtons>
+              </JobCard>
+            ))
+          ) : (
+            <EmptyState />
+          )}
+        </AnimatePresence>
+      </div>
     </QueueContainer>
   );
 };

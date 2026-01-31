@@ -44,6 +44,9 @@ export const PrintJobProvider = ({ children }) => {
       setIsFetching(true);
       setError(null);
 
+      // Check if backend is enabled
+      const backendEnabled = process.env.REACT_APP_ENABLE_CHAT_BACKEND === 'true';
+
       // Load from localStorage FIRST as initial state
       try {
         const localJobs = localStorage.getItem('securePrintJobs');
@@ -57,6 +60,24 @@ export const PrintJobProvider = ({ children }) => {
         console.warn('Failed to load jobs from localStorage', e);
       }
 
+      // Only attempt server calls if backend is enabled
+      if (!backendEnabled) {
+        console.log('[PrintJob] Backend disabled - running in offline mode with localStorage only');
+
+        // Set default printers if none exist
+        if (printers.length === 0) {
+          setPrinters([
+            { id: 1, name: 'Main Office Printer', location: 'Level 1, Room 102', status: 'online', model: 'HP LaserJet Enterprise', capabilities: 'Color, Duplex', department: 'Administration' },
+            { id: 2, name: 'Marketing Printer', location: 'Level 2, Room 205', status: 'online', model: 'Canon imageRUNNER', capabilities: 'Color, Duplex, Stapling', department: 'Marketing' },
+            { id: 3, name: 'IT Support Printer', location: 'Basement, IT Dept', status: 'online', model: 'Brother HL-Series', capabilities: 'Duplex', department: 'IT' }
+          ]);
+        }
+
+        setIsFetching(false);
+        return;
+      }
+
+      // Backend is enabled - attempt server calls
       try {
         const [jobsResponse, printersResponse] = await Promise.all([
           api.get('/api/jobs').catch(err => ({ data: { jobs: [] } })),
@@ -73,7 +94,7 @@ export const PrintJobProvider = ({ children }) => {
           });
           syncMetadataFromJobs(jobs);
         }
-        
+
         if (printersResponse.data.printers && printersResponse.data.printers.length > 0) {
           setPrinters(printersResponse.data.printers);
         } else if (printers.length === 0) {
@@ -107,15 +128,15 @@ export const PrintJobProvider = ({ children }) => {
     const cleanupInterval = setInterval(() => {
       const currentServerTime = Date.now();
       const expiredJobIds = [];
-      
+
       expirationMetadata.forEach((metadata, jobId) => {
         if (currentServerTime >= metadata.expiresAt) {
           expiredJobIds.push(jobId);
         }
       });
-      
+
       if (expiredJobIds.length > 0) {
-        setPrintJobs(prevJobs => 
+        setPrintJobs(prevJobs =>
           prevJobs.map(job => {
             if (expiredJobIds.includes(job.id)) {
               return {
@@ -128,7 +149,7 @@ export const PrintJobProvider = ({ children }) => {
             return job;
           })
         );
-        
+
         // Remove expired metadata
         setExpirationMetadata(prev => {
           const newMap = new Map(prev);
@@ -137,7 +158,7 @@ export const PrintJobProvider = ({ children }) => {
         });
       }
     }, 60000); // Run every minute
-    
+
     return () => clearInterval(cleanupInterval);
   }, [expirationMetadata]);
 
@@ -175,7 +196,7 @@ export const PrintJobProvider = ({ children }) => {
   const submitPrintJob = async (jobData) => {
     setIsSubmitting(true);
     setError(null);
-    
+
     let apiSuccess = false;
     let submittedJob = null;
 
@@ -192,7 +213,7 @@ export const PrintJobProvider = ({ children }) => {
       formData.append('priority', jobData.priority);
       formData.append('notes', jobData.notes || '');
       formData.append('expirationDuration', jobData.expirationDuration || 15);
-      
+
       if (jobData.file instanceof File) {
         formData.append('file', jobData.file);
       }
@@ -204,7 +225,7 @@ export const PrintJobProvider = ({ children }) => {
       if (response.data.success && response.data.job) {
         apiSuccess = true;
         const serverJob = response.data.job;
-        
+
         submittedJob = {
           ...serverJob,
           document: serverJob.file ? {
@@ -219,7 +240,7 @@ export const PrintJobProvider = ({ children }) => {
         };
 
         setPrintJobs(prev => [submittedJob, ...prev]);
-        
+
         const expiresAt = new Date(serverJob.expiresAt).getTime();
         setExpirationMetadata(prev => {
           const newMap = new Map(prev);
@@ -294,7 +315,7 @@ export const PrintJobProvider = ({ children }) => {
         };
 
         setPrintJobs(prev => [submittedJob, ...prev]);
-        
+
         setExpirationMetadata(prev => {
           const newMap = new Map(prev);
           newMap.set(id, {
@@ -336,13 +357,13 @@ export const PrintJobProvider = ({ children }) => {
     if (jobId.startsWith('local_')) {
       const now = new Date().toISOString();
       const job = printJobs.find(j => j.id === jobId);
-      
+
       if (job?.viewCount > 0) {
         toast.error('Document already viewed (one-time only)');
         throw new Error('Document already viewed');
       }
 
-      setPrintJobs(prev => prev.map(j => 
+      setPrintJobs(prev => prev.map(j =>
         j.id === jobId ? { ...j, viewCount: 1, firstViewedAt: now, lastViewedAt: now } : j
       ));
 
@@ -359,14 +380,14 @@ export const PrintJobProvider = ({ children }) => {
 
       if (response.data.success) {
         // Update job in state
-        setPrintJobs(prev => prev.map(job => 
-          job.id === jobId 
-            ? { 
-                ...job, 
-                viewCount: response.data.viewCount,
-                firstViewedAt: response.data.firstViewedAt,
-                document: response.data.document
-              }
+        setPrintJobs(prev => prev.map(job =>
+          job.id === jobId
+            ? {
+              ...job,
+              viewCount: response.data.viewCount,
+              firstViewedAt: response.data.firstViewedAt,
+              document: response.data.document
+            }
             : job
         ));
 
@@ -392,8 +413,8 @@ export const PrintJobProvider = ({ children }) => {
       if (error.response?.data?.alreadyViewed) {
         toast.error('Document already viewed (one-time only)');
         // Update state to reflect this
-        setPrintJobs(prev => prev.map(job => 
-          job.id === jobId 
+        setPrintJobs(prev => prev.map(job =>
+          job.id === jobId
             ? { ...job, viewCount: error.response.data.viewCount || 1 }
             : job
         ));
@@ -410,7 +431,7 @@ export const PrintJobProvider = ({ children }) => {
   const releasePrintJob = async (jobId, printerId, releasedBy, token) => {
     toast.dismiss(); // Clear old toasts
     if (jobId.startsWith('local_')) {
-      setPrintJobs(prev => prev.map(job => 
+      setPrintJobs(prev => prev.map(job =>
         job.id === jobId ? { ...job, status: 'released', releasedAt: new Date().toISOString() } : job
       ));
       toast.success('Print job released successfully (Local)!');
@@ -427,14 +448,14 @@ export const PrintJobProvider = ({ children }) => {
 
       if (response.data.success) {
         // Update job status and clear document data locally
-        setPrintJobs(prev => prev.map(job => 
-          job.id === jobId 
-            ? { 
-                ...job, 
-                status: 'released', 
-                releasedAt: new Date().toISOString(),
-                document: null // Clear document data on release
-              }
+        setPrintJobs(prev => prev.map(job =>
+          job.id === jobId
+            ? {
+              ...job,
+              status: 'released',
+              releasedAt: new Date().toISOString(),
+              document: null // Clear document data on release
+            }
             : job
         ));
 
@@ -444,11 +465,11 @@ export const PrintJobProvider = ({ children }) => {
     } catch (error) {
       console.error('Error releasing job:', error);
       const errorMsg = error.response?.data?.error || error.message || 'Failed to release print job';
-      
+
       if (error.response?.status === 409) {
         toast.warning('This job has already been released.');
         // Sync state
-        setPrintJobs(prev => prev.map(job => 
+        setPrintJobs(prev => prev.map(job =>
           job.id === jobId ? { ...job, status: 'released' } : job
         ));
       } else {
@@ -463,8 +484,8 @@ export const PrintJobProvider = ({ children }) => {
   const cancelPrintJob = async (jobId) => {
     // OPTIMISTIC UI: Update status locally first
     const previousJobs = [...printJobs];
-    setPrintJobs(prev => prev.map(job => 
-      job.id === jobId 
+    setPrintJobs(prev => prev.map(job =>
+      job.id === jobId
         ? { ...job, status: 'cancelled', cancelledAt: new Date().toISOString() }
         : job
     ));
@@ -486,7 +507,7 @@ export const PrintJobProvider = ({ children }) => {
     // OPTIMISTIC UI: Remove from local state
     const previousJobs = [...printJobs];
     const previousMetadata = new Map(expirationMetadata);
-    
+
     setPrintJobs(prev => prev.filter(job => job.id !== jobId));
     setExpirationMetadata(prev => {
       const newMap = new Map(prev);
@@ -522,7 +543,7 @@ export const PrintJobProvider = ({ children }) => {
 
   const getJobStatistics = (userId) => {
     const userJobs = userId ? getJobsByUser(userId) : printJobs;
-    
+
     return {
       total: userJobs.length,
       pending: userJobs.filter(job => job.status === 'pending').length,
@@ -536,18 +557,64 @@ export const PrintJobProvider = ({ children }) => {
   };
 
   const addPrinter = async (printerData) => {
-    // Implementation for adding printer
-    console.log('Add printer:', printerData);
+    const previousPrinters = [...printers];
+
+    // Optimistic update
+    const newPrinter = {
+      id: Date.now(),
+      ...printerData,
+      status: 'online',
+      ip: printerData.ip || '192.168.1.' + Math.floor(Math.random() * 255)
+    };
+
+    setPrinters(prev => [...prev, newPrinter]);
+
+    try {
+      // In real app: const response = await api.post('/api/printers', printerData);
+      toast.success('Printer added successfully');
+      return newPrinter;
+    } catch (error) {
+      console.error('Error adding printer:', error);
+      setPrinters(previousPrinters);
+      toast.error('Failed to add printer');
+      throw error;
+    }
   };
 
   const updatePrinter = async (printerId, printerData) => {
-    // Implementation for updating printer
-    console.log('Update printer:', printerId, printerData);
+    const previousPrinters = [...printers];
+
+    // Optimistic update
+    setPrinters(prev => prev.map(p =>
+      p.id === printerId ? { ...p, ...printerData } : p
+    ));
+
+    try {
+      // In real app: await api.put(`/api/printers/${printerId}`, printerData);
+      toast.success('Printer updated successfully');
+    } catch (error) {
+      console.error('Error updating printer:', error);
+      setPrinters(previousPrinters);
+      toast.error('Failed to update printer');
+      throw error;
+    }
   };
 
   const deletePrinter = async (printerId) => {
-    // Implementation for deleting printer
-    console.log('Delete printer:', printerId);
+    const previousPrinters = [...printers];
+
+    // Optimistic update
+    setPrinters(prev => prev.filter(p => p.id !== printerId));
+
+    try {
+      // In real app: await api.delete(`/api/printers/${printerId}`);
+      toast.success('Printer deleted successfully');
+    } catch (error) {
+      console.error('Error deleting printer:', error);
+      setPrinters(previousPrinters);
+      toast.error('Failed to delete printer');
+      throw error;
+    }
   };
 
   const calculateJobCost = (jobData) => {
@@ -560,19 +627,19 @@ export const PrintJobProvider = ({ children }) => {
   const validateTokenAndExpiration = (jobId, token) => {
     const currentServerTime = Date.now();
     const metadata = expirationMetadata.get(jobId);
-    
+
     if (!metadata) {
       return { valid: false, error: 'Print job not found or expired' };
     }
-    
+
     if (metadata.token !== token) {
       return { valid: false, error: 'Invalid token' };
     }
-    
+
     if (currentServerTime >= metadata.expiresAt) {
       return { valid: false, error: 'Print link has expired' };
     }
-    
+
     return { valid: true };
   };
 

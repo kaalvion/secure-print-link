@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { io } from 'socket.io-client';
 import api from '../api/client';
 import { toast } from 'react-toastify';
-import { useAuth } from './AuthContext';
+import { useUser } from '@clerk/clerk-react';
 
 const ChatContext = createContext();
 
@@ -15,7 +15,7 @@ export const useChat = () => {
 };
 
 export const ChatProvider = ({ children }) => {
-  const { currentUser, isAuthenticated } = useAuth();
+  const { user, isSignedIn } = useUser();
   const [socket, setSocket] = useState(null);
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
@@ -28,7 +28,14 @@ export const ChatProvider = ({ children }) => {
 
   // Initialize Socket.IO connection
   useEffect(() => {
-    if (!isAuthenticated || !currentUser) return;
+    if (!isSignedIn || !user) return;
+
+    // Only connect to socket if backend is enabled
+    const backendEnabled = process.env.REACT_APP_ENABLE_CHAT_BACKEND === 'true';
+    if (!backendEnabled) {
+      console.log('[Chat] Backend disabled - running in offline mode');
+      return;
+    }
 
     const serverUrl = process.env.REACT_APP_SOCKET_URL || 'http://localhost:4000';
     const newSocket = io(serverUrl, {
@@ -41,10 +48,10 @@ export const ChatProvider = ({ children }) => {
     newSocket.on('connect', () => {
       console.log('Socket connected');
       // Join with user identity
-      const role = currentUser.role === 'admin' ? 'printer' : 'user';
+      const role = user.publicMetadata?.role || 'user';
       newSocket.emit('join', {
-        userId: currentUser.id,
-        printerShopId: role === 'printer' ? currentUser.id : null,
+        userId: user.id,
+        printerShopId: role === 'printer' ? user.id : null,
         role
       });
     });
@@ -65,9 +72,9 @@ export const ChatProvider = ({ children }) => {
       }));
 
       // Update conversation's last message time
-      setConversations(prev => 
-        prev.map(conv => 
-          conv.id === message.conversationId 
+      setConversations(prev =>
+        prev.map(conv =>
+          conv.id === message.conversationId
             ? { ...conv, lastMessageAt: message.createdAt, unreadCount: conv.unreadCount + 1 }
             : conv
         ).sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt))
@@ -119,41 +126,57 @@ export const ChatProvider = ({ children }) => {
     return () => {
       newSocket.close();
     };
-  }, [isAuthenticated, currentUser, activeConversation?.id]);
+  }, [isSignedIn, user, activeConversation?.id]);
 
   // Load conversations
   const loadConversations = useCallback(async () => {
-    if (!currentUser) return;
+    if (!user) return;
+
+    // Don't attempt to load if backend is disabled
+    const backendEnabled = process.env.REACT_APP_ENABLE_CHAT_BACKEND === 'true';
+    if (!backendEnabled) {
+      console.log('[Chat] Backend disabled - skipping conversation load');
+      setConversations([]);
+      return;
+    }
 
     setLoading(true);
     try {
-      const role = currentUser.role === 'admin' ? 'printer' : 'user';
-      const endpoint = role === 'user' 
-        ? `/api/chat/conversations/user/${currentUser.id}`
-        : `/api/chat/conversations/printer/${currentUser.id}`;
+      const role = user.publicMetadata?.role || 'user';
+      const endpoint = role === 'user'
+        ? `/api/chat/conversations/user/${user.id}`
+        : `/api/chat/conversations/printer/${user.id}`;
 
       const response = await api.get(endpoint);
       setConversations(response.data.conversations || []);
     } catch (error) {
-      console.error('Error loading conversations:', error);
-      toast.error('Failed to load conversations');
+      // Fail silently - don't show toast errors during initialization
+      console.warn('[Chat] Could not load conversations (backend may be offline):', error.message);
+      setConversations([]);
     } finally {
       setLoading(false);
     }
-  }, [currentUser]);
+  }, [user]);
 
   // Create or get conversation
   const getOrCreateConversation = useCallback(async (printerShopId) => {
-    if (!currentUser) return null;
+    if (!user) return null;
+
+    // Don't attempt to create if backend is disabled
+    const backendEnabled = process.env.REACT_APP_ENABLE_CHAT_BACKEND === 'true';
+    if (!backendEnabled) {
+      console.warn('[Chat] Cannot create conversation - backend is disabled');
+      return null;
+    }
 
     try {
       const response = await api.post('/api/chat/conversations', {
-        userId: currentUser.id,
+        userId: user.id,
         printerShopId
       });
 
       const conversation = response.data.conversation;
-      
+
       // Add to conversations if not already present
       setConversations(prev => {
         const exists = prev.find(c => c.id === conversation.id);
@@ -163,26 +186,32 @@ export const ChatProvider = ({ children }) => {
 
       return conversation;
     } catch (error) {
-      console.error('Error creating conversation:', error);
-      toast.error('Failed to start conversation');
+      console.warn('[Chat] Could not create conversation (backend may be offline):', error.message);
       return null;
     }
-  }, [currentUser]);
+  }, [user]);
 
   // Load messages for a conversation
   const loadMessages = useCallback(async (conversationId, offset = 0, limit = 50) => {
-    if (!currentUser) return;
+    if (!user) return;
+
+    // Don't attempt to load if backend is disabled
+    const backendEnabled = process.env.REACT_APP_ENABLE_CHAT_BACKEND === 'true';
+    if (!backendEnabled) {
+      return { messages: [], hasMore: false };
+    }
 
     try {
-      const role = currentUser.role === 'admin' ? 'printer' : 'user';
+      const userRole = user.publicMetadata?.role || 'user';
+      const role = userRole === 'admin' ? 'printer' : userRole;
       const params = {
-        [role === 'user' ? 'userId' : 'printerShopId']: currentUser.id,
+        [role === 'user' ? 'userId' : 'printerShopId']: user.id,
         offset,
         limit
       };
 
       const response = await api.get(`/api/chat/conversations/${conversationId}/messages`, { params });
-      
+
       setMessages(prev => ({
         ...prev,
         [conversationId]: response.data.messages || []
@@ -190,21 +219,21 @@ export const ChatProvider = ({ children }) => {
 
       return response.data;
     } catch (error) {
-      console.error('Error loading messages:', error);
-      toast.error('Failed to load messages');
+      console.warn('[Chat] Could not load messages (backend may be offline):', error.message);
       return { messages: [], hasMore: false };
     }
-  }, [currentUser]);
+  }, [user]);
 
   // Send message via Socket.IO
   const sendMessage = useCallback((conversationId, message) => {
-    if (!socket || !currentUser) return;
+    if (!socket || !user) return;
 
-    const role = currentUser.role === 'admin' ? 'printer' : 'user';
-    
+    const userRole = user.publicMetadata?.role || 'user';
+    const role = userRole === 'admin' ? 'printer' : userRole;
+
     socket.emit('send_message', {
       conversationId,
-      senderId: currentUser.id,
+      senderId: user.id,
       senderRole: role,
       message
     });
@@ -213,7 +242,7 @@ export const ChatProvider = ({ children }) => {
     const tempMessage = {
       id: `temp_${Date.now()}`,
       conversationId,
-      senderId: currentUser.id,
+      senderId: user.id,
       senderRole: role,
       message,
       createdAt: new Date().toISOString(),
@@ -224,17 +253,17 @@ export const ChatProvider = ({ children }) => {
       ...prev,
       [conversationId]: [...(prev[conversationId] || []), tempMessage]
     }));
-  }, [socket, currentUser]);
+  }, [socket, user]);
 
   // Join conversation room
   const joinConversation = useCallback((conversationId) => {
     if (!socket) return;
     socket.emit('join_conversation', { conversationId });
     setActiveConversation(conversations.find(c => c.id === conversationId) || { id: conversationId });
-    
+
     // Mark messages as read
     markMessagesAsRead(conversationId);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, conversations]);
 
   // Leave conversation room
@@ -244,9 +273,10 @@ export const ChatProvider = ({ children }) => {
 
   // Send typing indicator
   const sendTyping = useCallback((conversationId, isTyping) => {
-    if (!socket || !currentUser) return;
+    if (!socket || !user) return;
 
-    const role = currentUser.role === 'admin' ? 'printer' : 'user';
+    const userRole = user.publicMetadata?.role || 'user';
+    const role = userRole === 'admin' ? 'printer' : userRole;
 
     // Clear existing timeout
     if (typingTimeoutRef.current[conversationId]) {
@@ -255,8 +285,8 @@ export const ChatProvider = ({ children }) => {
 
     socket.emit('typing', {
       conversationId,
-      userId: role === 'user' ? currentUser.id : null,
-      printerShopId: role === 'printer' ? currentUser.id : null,
+      userId: role === 'user' ? user.id : null,
+      printerShopId: role === 'printer' ? user.id : null,
       isTyping
     });
 
@@ -265,32 +295,33 @@ export const ChatProvider = ({ children }) => {
       typingTimeoutRef.current[conversationId] = setTimeout(() => {
         socket.emit('typing', {
           conversationId,
-          userId: role === 'user' ? currentUser.id : null,
-          printerShopId: role === 'printer' ? currentUser.id : null,
+          userId: role === 'user' ? user.id : null,
+          printerShopId: role === 'printer' ? user.id : null,
           isTyping: false
         });
       }, 3000);
     }
-  }, [socket, currentUser]);
+  }, [socket, user]);
 
   // Mark messages as read
   const markMessagesAsRead = useCallback(async (conversationId) => {
-    if (!socket || !currentUser) return;
+    if (!socket || !user) return;
 
-    const role = currentUser.role === 'admin' ? 'printer' : 'user';
+    const userRole = user.publicMetadata?.role || 'user';
+    const role = userRole === 'admin' ? 'printer' : userRole;
 
     socket.emit('mark_read', {
       conversationId,
-      userId: role === 'user' ? currentUser.id : null,
-      printerShopId: role === 'printer' ? currentUser.id : null
+      userId: role === 'user' ? user.id : null,
+      printerShopId: role === 'printer' ? user.id : null
     });
 
     // Also call API to ensure persistence
     try {
       await api.patch('/api/chat/messages/read', {
         conversationId,
-        userId: role === 'user' ? currentUser.id : null,
-        printerShopId: role === 'printer' ? currentUser.id : null
+        userId: role === 'user' ? user.id : null,
+        printerShopId: role === 'printer' ? user.id : null
       });
 
       // Update local state
@@ -302,32 +333,41 @@ export const ChatProvider = ({ children }) => {
     } catch (error) {
       console.error('Error marking messages as read:', error);
     }
-  }, [socket, currentUser]);
+  }, [socket, user]);
 
   // Load unread count
   const loadUnreadCount = useCallback(async () => {
-    if (!currentUser) return;
+    if (!user) return;
+
+    // Don't attempt to load if backend is disabled
+    const backendEnabled = process.env.REACT_APP_ENABLE_CHAT_BACKEND === 'true';
+    if (!backendEnabled) {
+      setUnreadCount(0);
+      return;
+    }
 
     try {
-      const role = currentUser.role === 'admin' ? 'printer' : 'user';
+      const userRole = user.publicMetadata?.role || 'user';
+      const role = userRole === 'admin' ? 'printer' : userRole;
       const params = {
-        [role === 'user' ? 'userId' : 'printerShopId']: currentUser.id
+        [role === 'user' ? 'userId' : 'printerShopId']: user.id
       };
 
       const response = await api.get('/api/chat/messages/unread', { params });
       setUnreadCount(response.data.unreadCount || 0);
     } catch (error) {
-      console.error('Error loading unread count:', error);
+      console.warn('[Chat] Could not load unread count (backend may be offline):', error.message);
+      setUnreadCount(0);
     }
-  }, [currentUser]);
+  }, [user]);
 
   // Load conversations on mount
   useEffect(() => {
-    if (isAuthenticated && currentUser) {
+    if (isSignedIn && user) {
       loadConversations();
       loadUnreadCount();
     }
-  }, [isAuthenticated, currentUser, loadConversations, loadUnreadCount]);
+  }, [isSignedIn, user, loadConversations, loadUnreadCount]);
 
   const value = {
     socket,

@@ -1,104 +1,117 @@
 import React from 'react';
 import styled from 'styled-components';
 import { usePrintJob } from '../context/PrintJobContext';
-import { 
-  FaChartBar, 
-  FaPrint, 
-  FaUsers, 
-  FaCalendarAlt
+import { motion } from 'framer-motion';
+import {
+  FaChartBar,
+  FaPrint,
+  FaUsers,
+  FaCalendarAlt,
+  FaArrowUp,
 } from 'react-icons/fa';
 
-const ReportsContainer = styled.div`
-  padding: 20px;
+const Container = styled.div`
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-bottom: 40px;
 `;
 
-const PageHeader = styled.div`
-  margin-bottom: 30px;
-  
+const Header = styled(motion.div)`
+  margin-bottom: 32px;
   h1 {
-    font-size: 28px;
-    font-weight: bold;
-    color: #2c3e50;
+    font-size: 2.5rem;
+    font-weight: 800;
     margin-bottom: 8px;
+    background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
   }
-  
-  p {
-    color: #7f8c8d;
-    font-size: 16px;
-  }
+  p { color: var(--text-secondary); font-size: 1.1rem; }
 `;
 
-const StatsGrid = styled.div`
+const Grid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 20px;
-  margin-bottom: 30px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+  margin-bottom: 32px;
+  
+  @media (max-width: 1024px) { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 600px) { grid-template-columns: 1fr; }
 `;
 
-const StatCard = styled.div`
-  background: white;
-  border-radius: 12px;
+const StatCard = styled(motion.div)`
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
   padding: 24px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-  border-left: 4px solid ${props => props.color || '#3498db'};
+  transition: all 0.2s;
   
-  .stat-header {
+  &:hover {
+    transform: translateY(-4px);
+    background: rgba(255, 255, 255, 0.05);
+  }
+  
+  .icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: ${props => props.bg || 'rgba(59, 130, 246, 0.1)'};
+    color: ${props => props.color || 'var(--primary)'};
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    margin-bottom: 15px;
-    
-    .stat-icon {
-      width: 50px;
-      height: 50px;
-      border-radius: 12px;
-      background: ${props => props.color || '#3498db'}20;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: ${props => props.color || '#3498db'};
-      font-size: 24px;
-    }
+    justify-content: center;
+    font-size: 24px;
+    margin-bottom: 16px;
   }
   
-  .stat-value {
-    font-size: 32px;
-    font-weight: bold;
-    color: #2c3e50;
+  .val {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: white;
+    line-height: 1;
     margin-bottom: 8px;
   }
   
-  .stat-label {
-    color: #7f8c8d;
-    font-size: 14px;
+  .label { color: var(--text-secondary); font-size: 0.9rem; font-weight: 500; }
+  
+  .trend {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.85rem;
+    margin-top: 12px;
+    
+    &.up { color: var(--success); }
+    &.down { color: var(--error); }
   }
 `;
 
-const ChartPlaceholder = styled.div`
-  background: white;
-  border-radius: 12px;
-  padding: 30px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-  margin-bottom: 20px;
-  text-align: center;
+const ChartCard = styled(motion.div)`
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  padding: 32px;
+  margin-bottom: 24px;
+  position: relative;
+  overflow: hidden;
   
-  .chart-icon {
-    font-size: 48px;
-    color: #3498db;
-    margin-bottom: 16px;
-    opacity: 0.3;
-  }
+  h3 { color: white; margin-bottom: 8px; }
+  p { color: var(--text-secondary); margin-bottom: 24px; font-size: 0.9rem; }
   
-  .chart-title {
-    font-size: 18px;
-    font-weight: 600;
-    color: #2c3e50;
-    margin-bottom: 8px;
-  }
-  
-  .chart-description {
-    color: #7f8c8d;
-    font-size: 14px;
+  .placeholder {
+    height: 200px;
+    border: 2px dashed rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    gap: 16px;
+    
+    svg { font-size: 48px; opacity: 0.2; }
   }
 `;
 
@@ -106,79 +119,65 @@ const Reports = () => {
   const { getJobStatistics } = usePrintJob();
   const stats = getJobStatistics();
 
+
   return (
-    <ReportsContainer>
-      <PageHeader>
-        <h1>Reports & Analytics</h1>
-        <p>Comprehensive insights into print usage and system performance</p>
-      </PageHeader>
+    <Container>
+      <Header initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
+        <h1>Analytics Overview</h1>
+        <p>Real-time insights into system performance</p>
+      </Header>
 
-      <StatsGrid>
-        <StatCard color="#3498db">
-          <div className="stat-header">
-            <div className="stat-icon">
-              <FaChartBar />
-            </div>
-          </div>
-          <div className="stat-value">{stats.total}</div>
-          <div className="stat-label">Total Print Jobs</div>
+      <Grid>
+        <StatCard initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+          <div className="icon"><FaChartBar /></div>
+          <div className="val">{stats.total}</div>
+          <div className="label">Total Jobs</div>
+          <div className="trend up"><FaArrowUp /> 12% vs last week</div>
         </StatCard>
 
-        <StatCard color="#27ae60">
-          <div className="stat-header">
-            <div className="stat-icon">
-              <FaPrint />
-            </div>
-          </div>
-          <div className="stat-value">${stats.totalCost}</div>
-          <div className="stat-label">Total Cost</div>
+        <StatCard bg="rgba(16, 185, 129, 0.1)" color="#10b981" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+          <div className="icon"><FaPrint /></div>
+          <div className="val">${stats.totalCost || '0.00'}</div>
+          <div className="label">Cost Savings</div>
+          <div className="trend up"><FaArrowUp /> 8% efficiency</div>
         </StatCard>
 
-        <StatCard color="#f39c12">
-          <div className="stat-header">
-            <div className="stat-icon">
-              <FaUsers />
-            </div>
-          </div>
-          <div className="stat-value">{stats.completed}</div>
-          <div className="stat-label">Completed Jobs</div>
+        <StatCard bg="rgba(245, 158, 11, 0.1)" color="#f59e0b" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+          <div className="icon"><FaUsers /></div>
+          <div className="val">{stats.completed}</div>
+          <div className="label">Completed Jobs</div>
+          <div className="trend up"><FaArrowUp /> 98% success rate</div>
         </StatCard>
 
-        <StatCard color="#e74c3c">
-          <div className="stat-header">
-            <div className="stat-icon">
-              <FaCalendarAlt />
-            </div>
-          </div>
-          <div className="stat-value">24</div>
-          <div className="stat-label">Active Users</div>
+        <StatCard bg="rgba(239, 68, 68, 0.1)" color="#ef4444" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+          <div className="icon"><FaCalendarAlt /></div>
+          <div className="val">24h</div>
+          <div className="label">System Uptime</div>
+          <div className="trend up"><FaArrowUp /> 100% stable</div>
         </StatCard>
-      </StatsGrid>
+      </Grid>
 
-      <ChartPlaceholder>
-        <FaChartBar className="chart-icon" />
-        <div className="chart-title">Print Usage Over Time</div>
-        <div className="chart-description">
-          Daily, weekly, and monthly print job trends and patterns
-        </div>
-      </ChartPlaceholder>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
+        <ChartCard initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
+          <h3>Print Volume Trends</h3>
+          <p>Daily job submission vs release rates</p>
+          <div className="placeholder">
+            <FaChartBar />
+            <span>Interactive Chart Visualization Placeholder</span>
+          </div>
+        </ChartCard>
 
-      <ChartPlaceholder>
-        <FaUsers className="chart-icon" />
-        <div className="chart-title">Department Usage Breakdown</div>
-        <div className="chart-description">
-          Print volume and cost analysis by department and user
-        </div>
-      </ChartPlaceholder>
+        <ChartCard initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}>
+          <h3>Department Usage</h3>
+          <p>Cost distribution by team</p>
+          <div className="placeholder">
+            <FaUsers />
+            <span>Pie Chart Placeholder</span>
+          </div>
+        </ChartCard>
+      </div>
 
-      <ChartPlaceholder>
-        <FaPrint className="chart-icon" />
-        <div className="chart-title">Printer Performance Metrics</div>
-        <div className="chart-description">
-          Uptime, efficiency, and maintenance statistics for all printers
-        </div>
-      </ChartPlaceholder>
-    </ReportsContainer>
+    </Container>
   );
 };
 

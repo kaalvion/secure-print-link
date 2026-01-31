@@ -1,679 +1,413 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
-import { useAuth } from '../context/AuthContext';
+import { motion } from 'framer-motion';
+import { useUser } from '@clerk/clerk-react';
 import { usePrintJob } from '../context/PrintJobContext';
-import { FaPrint, FaFileAlt, FaServer, FaChartBar, FaCog, FaClock, FaCheckCircle, FaExclamationTriangle, FaEye } from 'react-icons/fa';
+import {
+  FaPrint,
+  FaFileAlt,
+  FaChartBar,
+  FaCog,
+  FaClock,
+  FaCheckCircle,
+  FaArrowRight,
+  FaMapMarkerAlt
+} from 'react-icons/fa';
 import EmptyState from '../components/EmptyState';
 
 const DashboardContainer = styled.div`
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xl);
+  gap: 32px;
+  padding-bottom: 40px;
 `;
 
-const PageHeader = styled.div`
+const WelcomeSection = styled(motion.div)`
+  margin-bottom: 8px;
+  
   h1 {
-    font-size: var(--font-size-xxxl);
+    font-size: 3rem;
     font-weight: 800;
-    color: var(--text-primary);
-    margin-bottom: var(--spacing-xs);
-    letter-spacing: -0.025em;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
   }
   
   p {
     color: var(--text-secondary);
-    font-size: var(--font-size-md);
+    font-size: 1.1rem;
+    max-width: 600px;
   }
 `;
 
-const StatsGrid = styled.div`
+const BentoGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: var(--spacing-lg);
-`;
-
-const StatCard = styled.div`
-  background: var(--background-card);
-  border-radius: var(--border-radius-lg);
-  padding: var(--spacing-lg);
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border-color);
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-lg);
-  transition: all var(--transition-normal);
-  
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-    border-color: var(--primary-color);
-  }
-  
-  .stat-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: var(--border-radius-md);
-    background: ${props => props.color || 'var(--primary-color)'}15;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: ${props => props.color || 'var(--primary-color)'};
-    font-size: 20px;
-    flex-shrink: 0;
-  }
-  
-  .stat-info {
-    .stat-value {
-      font-size: var(--font-size-xxl);
-      font-weight: 700;
-      color: var(--text-primary);
-      line-height: 1.2;
-    }
-    
-    .stat-label {
-      color: var(--text-secondary);
-      font-size: var(--font-size-sm);
-      font-weight: 500;
-    }
-  }
-`;
-
-const ContentGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  gap: var(--spacing-xl);
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: minmax(180px, auto);
+  gap: 24px;
   
   @media (max-width: 1200px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  @media (max-width: 768px) {
     grid-template-columns: 1fr;
   }
 `;
 
-const MainContent = styled.div`
-  grid-column: span 8;
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xl);
+const GlassCard = styled(motion.div)`
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  padding: 24px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  position: relative;
   
-  @media (max-width: 1200px) {
-    grid-column: span 12;
+  &:hover {
+    transform: translateY(-4px);
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 10px 40px -10px rgba(0,0,0,0.5);
+  }
+  
+  &.span-2 { grid-column: span 2; }
+  &.span-full { grid-column: 1 / -1; }
+  &.row-2 { grid-row: span 2; }
+  
+  @media (max-width: 768px) {
+    &.span-2, &.span-full { grid-column: 1; }
   }
 `;
 
-const Section = styled.section`
-  background: var(--background-card);
-  border-radius: var(--border-radius-lg);
-  padding: var(--spacing-xl);
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border-color);
+const StatValue = styled.div`
+  font-size: 3.5rem;
+  font-weight: 800;
+  color: white;
+  line-height: 1;
+  margin-bottom: 4px;
+  background: ${props => props.gradient || 'white'};
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+`;
+
+const StatLabel = styled.div`
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   
-  .section-header {
+  svg { color: ${props => props.iconColor || 'white'}; }
+`;
+
+const StatIconLarge = styled.div`
+  position: absolute;
+  right: -20px;
+  bottom: -20px;
+  font-size: 120px;
+  opacity: 0.05;
+  color: white;
+  pointer-events: none;
+`;
+
+const SectionHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  
+  h3 {
+    font-size: 1.25rem;
+    color: white;
+    font-weight: 700;
+  }
+  
+  a {
+    color: var(--primary);
+    font-size: 0.9rem;
+    font-weight: 600;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    margin-bottom: var(--spacing-xl);
+    gap: 6px;
+    transition: gap 0.2s;
     
-    h2 {
-      font-size: var(--font-size-xl);
-      font-weight: 700;
-      color: var(--text-primary);
-      letter-spacing: -0.025em;
-    }
-    
-    .view-all {
-      color: var(--primary-color);
-      text-decoration: none;
-      font-size: var(--font-size-sm);
-      font-weight: 600;
-      padding: 6px 12px;
-      border-radius: var(--border-radius-md);
-      transition: all var(--transition-fast);
-      
-      &:hover {
-        background: var(--background-light);
-        color: var(--primary-hover);
-      }
+    &:hover {
+      gap: 10px;
     }
   }
 `;
 
-const JobList = styled.div`
+const ActionGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
+`;
+
+const ActionButton = styled.button`
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-md);
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: white;
+  
+  &:hover {
+    background: var(--primary);
+    border-color: var(--primary);
+    transform: translateY(-2px);
+  }
+  
+  .icon-box {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+  }
+  
+  span {
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
 `;
 
 const JobItem = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-md);
-  background: var(--background-light);
-  border-radius: var(--border-radius-md);
-  border: 1px solid transparent;
-  transition: all var(--transition-fast);
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 16px;
+  margin-bottom: 12px;
+  transition: background 0.2s;
   
   &:hover {
-    background: white;
-    border-color: var(--border-color);
-    box-shadow: var(--shadow-sm);
-    transform: translateX(4px);
+    background: rgba(255, 255, 255, 0.05);
   }
   
-  .job-info {
+  .info {
     display: flex;
     align-items: center;
-    gap: var(--spacing-md);
+    gap: 16px;
     
-    .job-icon {
+    .icon {
       width: 40px;
       height: 40px;
-      border-radius: var(--border-radius-sm);
-      background: white;
+      border-radius: 10px;
+      background: rgba(59, 130, 246, 0.1);
+      color: var(--primary);
       display: flex;
       align-items: center;
       justify-content: center;
-      color: var(--primary-color);
-      box-shadow: var(--shadow-sm);
     }
     
-    .job-details {
-      .job-name {
-        font-weight: 600;
-        color: var(--text-primary);
-        font-size: var(--font-size-md);
-        margin-bottom: 2px;
-      }
-      
-      .job-meta {
-        font-size: var(--font-size-xs);
-        color: var(--text-secondary);
-      }
-    }
-  }
-  
-  .job-status {
-    padding: 4px 12px;
-    border-radius: 9999px;
-    font-size: var(--font-size-xs);
-    font-weight: 600;
-    text-transform: capitalize;
-    
-    &.pending { background: #fef3c7; color: #92400e; }
-    &.printing { background: #e0f2fe; color: #075985; }
-    &.completed { background: #dcfce7; color: #166534; }
-    &.cancelled { background: #fee2e2; color: #991b1b; }
-  }
-`;
-
-const PrinterGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: var(--spacing-md);
-`;
-
-const PrinterCard = styled.div`
-  background: var(--background-light);
-  border-radius: var(--border-radius-md);
-  padding: var(--spacing-lg);
-  text-align: center;
-  border: 1px solid transparent;
-  transition: all var(--transition-fast);
-  
-  &:hover {
-    background: white;
-    border-color: var(--border-color);
-    box-shadow: var(--shadow-sm);
-  }
-  
-  .printer-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    background: white;
-    color: ${props => props.status === 'online' ? 'var(--success-color)' : 'var(--error-color)'};
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto var(--spacing-md);
-    font-size: 20px;
-    box-shadow: var(--shadow-sm);
-  }
-  
-  .printer-name {
-    font-weight: 600;
-    color: var(--text-primary);
-    font-size: var(--font-size-sm);
-    margin-bottom: 4px;
-  }
-  
-  .printer-status {
-    font-size: var(--font-size-xs);
-    color: ${props => props.status === 'online' ? 'var(--success-color)' : 'var(--error-color)'};
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.025em;
-  }
-`;
-
-const QuickActions = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-`;
-
-const ActionButton = styled.button`
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-md);
-  padding: var(--spacing-md);
-  background: var(--background-light);
-  border: 1px solid transparent;
-  border-radius: var(--border-radius-md);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  text-align: left;
-  width: 100%;
-  
-  &:hover {
-    background: white;
-    border-color: var(--primary-color);
-    box-shadow: var(--shadow-sm);
-    transform: translateY(-1px);
-  }
-  
-  .action-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: var(--border-radius-sm);
-    background: var(--primary-color);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 18px;
-    flex-shrink: 0;
-  }
-  
-  .action-text {
-    .action-title {
-      font-weight: 600;
-      color: var(--text-primary);
-      font-size: var(--font-size-sm);
-      margin-bottom: 2px;
-    }
-    
-    .action-description {
-      font-size: var(--font-size-xs);
-      color: var(--text-secondary);
+    .text {
+      h4 { color: white; margin-bottom: 4px; font-weight: 600; }
+      p { color: var(--text-secondary); font-size: 0.85rem; }
     }
   }
 `;
 
-const ChartPlaceholder = styled.div`
-  height: 240px;
-  background: var(--background-light);
-  border-radius: var(--border-radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px dashed var(--border-color);
-`;
-
-const SidebarContent = styled.div`
-  grid-column: span 4;
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xl);
+const StatusBadge = styled.span`
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
   
-  @media (max-width: 1200px) {
-    grid-column: span 12;
-  }
-`;
-
-const SystemStatus = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-  
-  .status-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--spacing-sm) 0;
-    border-bottom: 1px solid var(--border-color);
-    
-    &:last-child {
-      border-bottom: none;
-    }
-    
-    .status-label {
-      font-size: var(--font-size-sm);
-      color: var(--text-secondary);
-      font-weight: 500;
-    }
-    
-    .status-value {
-      font-size: var(--font-size-sm);
-      font-weight: 700;
-      color: var(--text-primary);
-    }
-  }
+  &.pending { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+  &.printing { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+  &.completed { background: rgba(52, 211, 153, 0.2); color: #34d399; }
+  &.cancelled { background: rgba(248, 113, 113, 0.2); color: #f87171; }
 `;
 
 const Dashboard = () => {
-  const { currentUser } = useAuth();
-  const { printJobs, getJobStatistics, printers: allPrinters, isFetching } = usePrintJob();
+  const { user } = useUser();
+  const { printJobs, getJobStatistics, printers: allPrinters } = usePrintJob();
   const navigate = useNavigate();
   const [userJobs, setUserJobs] = useState([]);
   const [printers, setPrinters] = useState([]);
   const [stats, setStats] = useState({
-    total: 0,
-    pending: 0,
-    released: 0,
-    completed: 0,
-    cancelled: 0,
-    viewed: 0,
-    expired: 0
+    total: 0, pending: 0, released: 0, completed: 0, cancelled: 0, viewed: 0, expired: 0
   });
 
-  // Filter user's jobs and calculate statistics
   useEffect(() => {
-    if (printJobs && currentUser?.id) {
-      const userJobs = printJobs.filter(job => job.userId === currentUser.id);
-      setUserJobs(userJobs);
-      
-      // Calculate real-time statistics from the same data source
-      const jobStats = getJobStatistics(currentUser.id);
+    if (printJobs && user && user.id) {
+      const uJobs = printJobs.filter(job => job.userId === user.id);
+      setUserJobs(uJobs);
+      const jobStats = getJobStatistics(user.id);
       setStats(jobStats);
     }
-    
-    if (allPrinters) {
-      setPrinters(allPrinters);
-    }
-  }, [printJobs, currentUser, getJobStatistics, allPrinters]);
-
-  const onlinePrinters = printers.filter(p => p.status === 'online');
-  const offlinePrinters = printers.filter(p => p.status === 'offline');
+    if (allPrinters) setPrinters(allPrinters);
+  }, [printJobs, user, getJobStatistics, allPrinters]);
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
     });
   };
 
-  if (isFetching && (!printJobs.length || !printers.length)) {
-    return (
-      <DashboardContainer>
-        <PageHeader>
-          <div className="skeleton skeleton-title" style={{ height: '2.5rem', width: '200px' }}></div>
-          <div className="skeleton skeleton-text" style={{ width: '400px' }}></div>
-        </PageHeader>
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.1
+      }
+    }
+  };
 
-        <StatsGrid>
-          {[1, 2, 3, 4, 5, 6].map(i => (
-            <StatCard key={i}>
-              <div className="skeleton skeleton-circle"></div>
-              <div className="stat-info">
-                <div className="skeleton skeleton-title" style={{ width: '40px', marginBottom: '4px' }}></div>
-                <div className="skeleton skeleton-text" style={{ width: '80px' }}></div>
-              </div>
-            </StatCard>
-          ))}
-        </StatsGrid>
-
-        <ContentGrid>
-          <MainContent>
-            <Section>
-              <div className="skeleton skeleton-title"></div>
-              <JobList>
-                {[1, 2, 3].map(i => (
-                  <JobItem key={i}>
-                    <div className="job-info">
-                      <div className="skeleton skeleton-circle"></div>
-                      <div className="job-details">
-                        <div className="skeleton skeleton-text" style={{ width: '150px' }}></div>
-                        <div className="skeleton skeleton-text" style={{ width: '100px' }}></div>
-                      </div>
-                    </div>
-                  </JobItem>
-                ))}
-              </JobList>
-            </Section>
-          </MainContent>
-          <SidebarContent>
-            <Section>
-              <div className="skeleton skeleton-title"></div>
-              <QuickActions>
-                {[1, 2, 3, 4].map(i => (
-                  <div key={i} className="skeleton skeleton-rect" style={{ height: '70px', borderRadius: 'var(--border-radius-md)' }}></div>
-                ))}
-              </QuickActions>
-            </Section>
-          </SidebarContent>
-        </ContentGrid>
-      </DashboardContainer>
-    );
-  }
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0 }
+  };
 
   return (
     <DashboardContainer>
-      <PageHeader>
+      <WelcomeSection
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
         <h1>Dashboard</h1>
-        <p>Welcome back, {currentUser?.name}! Here's what's happening with your print jobs.</p>
-      </PageHeader>
+        <p>Welcome back, {user?.fullName || user?.firstName}. Overview of your secure printing activity.</p>
+      </WelcomeSection>
 
-      <StatsGrid>
-        <StatCard color="var(--primary-color)">
-          <div className="stat-icon">
-            <FaFileAlt />
-          </div>
-          <div className="stat-info">
-            <div className="stat-value">{stats.total}</div>
-            <div className="stat-label">Total Jobs</div>
-          </div>
-        </StatCard>
+      <motion.div variants={containerVariants} initial="hidden" animate="show">
+        <BentoGrid>
+          {/* Main Stat Card - Total Jobs */}
+          <GlassCard className="span-2" variants={itemVariants}>
+            <StatLabel iconColor="#60a5fa"><FaFileAlt /> Total Documents</StatLabel>
+            <StatValue gradient="linear-gradient(to right, #60a5fa, #a78bfa)">
+              {stats.total}
+            </StatValue>
+            <StatIconLarge><FaFileAlt /></StatIconLarge>
+          </GlassCard>
 
-        <StatCard color="var(--warning-color)">
-          <div className="stat-icon">
-            <FaClock />
-          </div>
-          <div className="stat-info">
-            <div className="stat-value">{stats.pending}</div>
-            <div className="stat-label">Pending</div>
-          </div>
-        </StatCard>
+          {/* Pending Jobs */}
+          <GlassCard variants={itemVariants} style={{ background: 'rgba(245, 158, 11, 0.1)' }}>
+            <StatLabel iconColor="#fbbf24"><FaClock /> Pending</StatLabel>
+            <StatValue gradient="linear-gradient(to right, #fbbf24, #f59e0b)">
+              {stats.pending}
+            </StatValue>
+          </GlassCard>
 
-        <StatCard color="var(--primary-hover)">
-          <div className="stat-icon">
-            <FaPrint />
-          </div>
-          <div className="stat-info">
-            <div className="stat-value">{stats.released}</div>
-            <div className="stat-label">Released</div>
-          </div>
-        </StatCard>
+          {/* Released Jobs */}
+          <GlassCard variants={itemVariants} style={{ background: 'rgba(52, 211, 153, 0.1)' }}>
+            <StatLabel iconColor="#34d399"><FaCheckCircle /> Released</StatLabel>
+            <StatValue gradient="linear-gradient(to right, #34d399, #10b981)">
+              {stats.released}
+            </StatValue>
+          </GlassCard>
 
-        <StatCard color="var(--success-color)">
-          <div className="stat-icon">
-            <FaCheckCircle />
-          </div>
-          <div className="stat-info">
-            <div className="stat-value">{stats.completed}</div>
-            <div className="stat-label">Completed</div>
-          </div>
-        </StatCard>
+          {/* Quick Actions (Span 2 Columns) */}
+          <GlassCard className="span-2" variants={itemVariants}>
+            <SectionHeader>
+              <h3>Quick Actions</h3>
+            </SectionHeader>
+            <ActionGrid>
+              <ActionButton onClick={() => navigate('/submit-job')}>
+                <div className="icon-box"><FaPrint /></div>
+                <span>New Print</span>
+              </ActionButton>
+              <ActionButton onClick={() => navigate('/print-job-queue')}>
+                <div className="icon-box"><FaFileAlt /></div>
+                <span>Job Queue</span>
+              </ActionButton>
+              <ActionButton onClick={() => navigate('/print-release')}>
+                <div className="icon-box"><FaCheckCircle /></div>
+                <span>Release</span>
+              </ActionButton>
+              <ActionButton onClick={() => navigate('/shop-discovery')}>
+                <div className="icon-box"><FaMapMarkerAlt /></div>
+                <span>Find Shop</span>
+              </ActionButton>
+            </ActionGrid>
+          </GlassCard>
 
-        <StatCard color="#8b5cf6">
-          <div className="stat-icon">
-            <FaEye />
-          </div>
-          <div className="stat-info">
-            <div className="stat-value">{stats.viewed}</div>
-            <div className="stat-label">Viewed</div>
-          </div>
-        </StatCard>
-
-        <StatCard color="var(--error-color)">
-          <div className="stat-icon">
-            <FaExclamationTriangle />
-          </div>
-          <div className="stat-info">
-            <div className="stat-value">{stats.expired}</div>
-            <div className="stat-label">Expired</div>
-          </div>
-        </StatCard>
-      </StatsGrid>
-
-      <ContentGrid>
-        <MainContent>
-          <Section>
-            <div className="section-header">
-              <h2>Recent Print Jobs</h2>
-              <a href="/print-job-queue" className="view-all">View All</a>
-            </div>
-            <JobList>
+          {/* Recent Jobs List (Span 2 Columns, Row 2) */}
+          <GlassCard className="span-2 row-2" variants={itemVariants}>
+            <SectionHeader>
+              <h3>Recent Activity</h3>
+              <a href="/print-job-queue">View All <FaArrowRight /></a>
+            </SectionHeader>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {userJobs.length > 0 ? (
-                userJobs.slice(0, 5).map((job) => (
+                userJobs.slice(0, 4).map((job) => (
                   <JobItem key={job.id}>
-                    <div className="job-info">
-                      <div className="job-icon">
-                        <FaFileAlt />
-                      </div>
-                      <div className="job-details">
-                        <div className="job-name">{job.documentName || 'Document'}</div>
-                        <div className="job-meta">
-                          {formatDate(job.submittedAt)} • {job.pages} pages • ${job.cost}
-                        </div>
+                    <div className="info">
+                      <div className="icon"><FaFileAlt /></div>
+                      <div className="text">
+                        <h4>{job.documentName}</h4>
+                        <p>{formatDate(job.submittedAt)} • {job.pages} pgs</p>
                       </div>
                     </div>
-                    <div className={`job-status ${job.status}`}>
+                    <StatusBadge className={job.status.toLowerCase()}>
                       {job.status}
-                    </div>
+                    </StatusBadge>
                   </JobItem>
                 ))
               ) : (
-                <EmptyState 
-                  type="jobs" 
+                <EmptyState
+                  type="jobs"
                   action={() => navigate('/submit-job')}
-                  actionText="Submit Print Job"
-                  onAction={() => navigate('/submit-job')}
+                  actionText="Submit First Job"
                 />
               )}
-            </JobList>
-          </Section>
-
-          <Section>
-            <div className="section-header">
-              <h2>Printer Status</h2>
-              <a href="/printers" className="view-all">Manage Printers</a>
             </div>
-            <PrinterGrid>
-              {printers.map(printer => (
-                <PrinterCard key={printer.id} status={printer.status}>
-                  <div className="printer-icon">
-                    <FaServer />
-                  </div>
-                  <div className="printer-name">{printer.name}</div>
-                  <div className="printer-status">{printer.status}</div>
-                </PrinterCard>
-              ))}
-            </PrinterGrid>
-          </Section>
+          </GlassCard>
 
-          <Section>
-            <div className="section-header">
-              <h2>Print Activity</h2>
+          {/* System/Printer Status */}
+          <GlassCard variants={itemVariants}>
+            <SectionHeader>
+              <h3>Printers</h3>
+              <a href="/printer-management"><FaCog /></a>
+            </SectionHeader>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Online</span>
+                <span style={{ color: '#34d399', fontWeight: 'bold' }}>
+                  {printers.filter(p => p.status === 'online').length}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Offline</span>
+                <span style={{ color: '#f87171', fontWeight: 'bold' }}>
+                  {printers.filter(p => p.status === 'offline').length}
+                </span>
+              </div>
             </div>
-            <ChartPlaceholder>
-              <div style={{ textAlign: 'center' }}>
-                <FaChartBar style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.3 }} />
-                <div>Print activity chart will be displayed here</div>
-                <div style={{ fontSize: '12px', marginTop: '8px' }}>
-                  Shows daily/weekly/monthly print job trends
-                </div>
-              </div>
-            </ChartPlaceholder>
-          </Section>
-        </MainContent>
+          </GlassCard>
 
-        <SidebarContent>
-          <Section>
-            <div className="section-header">
-              <h2>Quick Actions</h2>
+          {/* Reports Link Card */}
+          <GlassCard variants={itemVariants} onClick={() => navigate('/reports')} style={{ cursor: 'pointer' }}>
+            <StatLabel iconColor="#a78bfa"><FaChartBar /> Analytics</StatLabel>
+            <div style={{ marginTop: '16px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+              View detailed usage reports and cost analysis.
             </div>
-            <QuickActions>
-              <ActionButton onClick={() => navigate('/submit-job')}>
-                <div className="action-icon">
-                  <FaPrint />
-                </div>
-                <div className="action-text">
-                  <div className="action-title">Submit Print Job</div>
-                  <div className="action-description">Upload and submit a new document</div>
-                </div>
-              </ActionButton>
-
-              <ActionButton onClick={() => navigate('/print-release')}>
-                <div className="action-icon">
-                  <FaCog />
-                </div>
-                <div className="action-text">
-                  <div className="action-title">Release Print Jobs</div>
-                  <div className="action-description">Release your pending print jobs</div>
-                </div>
-              </ActionButton>
-
-              <ActionButton onClick={() => navigate('/print-job-queue')}>
-                <div className="action-icon">
-                  <FaFileAlt />
-                </div>
-                <div className="action-text">
-                  <div className="action-title">View Job Queue</div>
-                  <div className="action-description">Check status of all your jobs</div>
-                </div>
-              </ActionButton>
-
-              <ActionButton onClick={() => navigate('/reports')}>
-                <div className="action-icon">
-                  <FaChartBar />
-                </div>
-                <div className="action-text">
-                  <div className="action-title">View Reports</div>
-                  <div className="action-description">Analytics and usage reports</div>
-                </div>
-              </ActionButton>
-            </QuickActions>
-          </Section>
-
-          <Section>
-            <div className="section-header">
-              <h2>System Status</h2>
+            <div style={{ marginTop: 'auto', paddingTop: '16px', display: 'flex', justifyContent: 'flex-end', color: 'var(--primary)' }}>
+              <FaArrowRight />
             </div>
-            <SystemStatus>
-              <div className="status-item">
-                <span className="status-label">Online Printers</span>
-                <span className="status-value" style={{ color: 'var(--success-color)' }}>{onlinePrinters.length}</span>
-              </div>
-              <div className="status-item">
-                <span className="status-label">Offline Printers</span>
-                <span className="status-value" style={{ color: 'var(--error-color)' }}>{offlinePrinters.length}</span>
-              </div>
-              <div className="status-item">
-                <span className="status-label">Active Users</span>
-                <span className="status-value" style={{ color: 'var(--primary-color)' }}>24</span>
-              </div>
-              <div className="status-item">
-                <span className="status-label">System Health</span>
-                <span className="status-value" style={{ color: 'var(--success-color)' }}>Excellent</span>
-              </div>
-            </SystemStatus>
-          </Section>
-        </SidebarContent>
-      </ContentGrid>
+          </GlassCard>
+
+        </BentoGrid>
+      </motion.div>
     </DashboardContainer>
   );
 };

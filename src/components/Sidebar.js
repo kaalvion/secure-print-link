@@ -1,25 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import styled from 'styled-components';
-import { useAuth } from '../context/AuthContext';
-import { 
-  FaHome, 
-  FaPrint, 
-  FaList, 
-  FaServer, 
-  FaUsers, 
-  FaQrcode, 
-  FaChartBar, 
+import { useUser } from '@clerk/clerk-react';
+import {
+  FaHome,
+  FaPrint,
+  FaList,
+  FaServer,
+  FaUsers,
+  FaQrcode,
+  FaChartBar,
   FaCog,
   FaChevronLeft,
   FaChevronRight,
   FaBars,
   FaTimes,
-  FaComments
+  FaComments,
+  FaMapMarkerAlt
 } from 'react-icons/fa';
 
 const SidebarContainer = styled.aside`
-  background: var(--secondary-color);
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(20px);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
   color: white;
   width: ${props => props.isOpen ? '260px' : '80px'};
   height: 100vh;
@@ -29,14 +32,24 @@ const SidebarContainer = styled.aside`
   top: 0;
   display: flex;
   flex-direction: column;
-  box-shadow: var(--shadow-lg);
   z-index: 900;
   
   @media (max-width: 1199px) and (min-width: 769px) {
     width: ${props => props.isOpen ? '260px' : '80px'};
   }
 
+  /* Desktop Styles: Scroll with page */
+  @media (min-width: 769px) {
+    position: relative;
+    top: 0;
+    margin-top: 64px; /* Push down below fixed header */
+    height: auto;
+    min-height: calc(100vh - 64px);
+    overflow: visible;
+  }
+
   @media (max-width: 768px) {
+    background: #0f172a; /* Solid background on mobile for legibility */
     position: fixed;
     top: 0;
     left: ${props => props.isOpen ? '0' : '-260px'};
@@ -64,28 +77,24 @@ const Overlay = styled.div`
 
 const ToggleButton = styled.button`
   position: absolute;
-  top: 24px;
-  right: 12px;
-  background: rgba(255, 255, 255, 0.1);
-  border: none;
+  top: 20px;
+  right: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   color: white;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--border-radius-md);
-  display: flex;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: none; /* Hidden as requested to remove clutter */
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  z-index: 10;
+  z-index: 20;
   transition: all var(--transition-fast);
   
   &:hover {
     background: rgba(255, 255, 255, 0.2);
     transform: scale(1.05);
-  }
-  
-  @media (max-width: 768px) {
-    display: none;
   }
 `;
 
@@ -146,11 +155,13 @@ const CloseButton = styled.button`
 `;
 
 const LogoSection = styled.div`
-  padding: 32px 24px;
+  padding: 20px;
+  padding-right: 50px; /* Make space for toggle button */
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 8px;
+  margin-bottom: 24px;
+  height: 68px; /* Fixed height for consistency */
   
   .logo-icon {
     font-size: 28px;
@@ -159,8 +170,8 @@ const LogoSection = styled.div`
   }
   
   .logo-text {
-    font-size: 1.25rem;
-    font-weight: 700;
+    font-size: 1.1rem;
+    font-weight: 800;
     white-space: nowrap;
     letter-spacing: -0.025em;
     opacity: ${props => props.isOpen ? '1' : '0'};
@@ -171,6 +182,11 @@ const LogoSection = styled.div`
     .logo-text {
       opacity: 1;
     }
+  }
+
+  /* Hide Logo Section on Desktop as Header handles branding */
+  @media (min-width: 769px) {
+    display: none;
   }
 `;
 
@@ -190,6 +206,17 @@ const NavMenu = styled.nav`
   &::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.1);
     border-radius: 2px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+  }
+
+  /* Reset overflow for desktop to effectively disable internal scroll */
+  @media (min-width: 769px) {
+    overflow: visible;
+    margin-top: 20px; /* Small spacing */
   }
 `;
 
@@ -316,7 +343,7 @@ const UserSection = styled.div`
 `;
 
 const Sidebar = ({ isOpen, onToggle }) => {
-  const { currentUser } = useAuth();
+  const { user } = useUser();
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
 
@@ -327,10 +354,10 @@ const Sidebar = ({ isOpen, onToggle }) => {
       setIsMobile(width <= 768);
       setIsTablet(width > 768 && width <= 1199);
     };
-    
+
     checkSize();
     window.addEventListener('resize', checkSize);
-    
+
     return () => window.removeEventListener('resize', checkSize);
   }, []);
 
@@ -359,6 +386,7 @@ const Sidebar = ({ isOpen, onToggle }) => {
         { path: '/dashboard', icon: FaHome, text: 'Dashboard' },
         { path: '/submit-job', icon: FaPrint, text: 'Submit Print Job' },
         { path: '/print-job-queue', icon: FaList, text: 'Print Job Queue' },
+        { path: '/shop-discovery', icon: FaMapMarkerAlt, text: 'Find a Shop' },
         { path: '/chat', icon: FaComments, text: 'Messages' },
       ]
     },
@@ -380,13 +408,28 @@ const Sidebar = ({ isOpen, onToggle }) => {
   ];
 
   // Filter items based on user role
+  const userRole = user?.unsafeMetadata?.role;
+
   const filteredNavItems = navItems.map(section => ({
     ...section,
     items: section.items.filter(item => {
-      if (item.path === '/users' && currentUser?.role !== 'admin') {
-        return false;
+      // Admin sees everything
+      if (userRole === 'admin') return true;
+
+      // Printer Shop
+      if (userRole === 'printer') {
+        const hiddenForPrinter = ['/submit-job', '/user-management'];
+        return !hiddenForPrinter.includes(item.path);
       }
-      return true;
+
+      // Regular User
+      if (userRole === 'user') {
+        const allowedForUser = ['/dashboard', '/submit-job', '/print-job-queue', '/chat', '/settings', '/shop-discovery'];
+        return allowedForUser.includes(item.path);
+      }
+
+      // Default (e.g. valid login but no role yet, though Onboarding should catch this)
+      return false;
     })
   })).filter(section => section.items.length > 0);
 
@@ -401,14 +444,14 @@ const Sidebar = ({ isOpen, onToggle }) => {
       <MobileToggleButton onClick={() => onToggle(true)}>
         <FaBars />
       </MobileToggleButton>
-      
+
       <Overlay isOpen={isOpen && isMobile} onClick={handleOverlayClick} />
-      
+
       <SidebarContainer isOpen={isOpen} isMobile={isMobile}>
         <ToggleButton isOpen={isOpen} onClick={() => onToggle(!isOpen)}>
           {isOpen ? <FaChevronLeft /> : <FaChevronRight />}
         </ToggleButton>
-        
+
         <CloseButton onClick={() => onToggle(false)}>
           <FaTimes />
         </CloseButton>
@@ -440,11 +483,11 @@ const Sidebar = ({ isOpen, onToggle }) => {
         <UserSection isOpen={isOpen}>
           <div className="user-info">
             <div className="user-avatar">
-              {getInitials(currentUser?.name)}
+              {getInitials(user?.fullName || user?.firstName)}
             </div>
             <div className="user-details">
-              <div className="user-name">{currentUser?.name}</div>
-              <div className="user-role">{currentUser?.role}</div>
+              <div className="user-name">{user?.fullName || user?.firstName}</div>
+              <div className="user-role">{user?.unsafeMetadata?.role || 'User'}</div>
             </div>
           </div>
         </UserSection>

@@ -1,381 +1,254 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
-import { useAuth } from '../context/AuthContext';
-import { FaUser, FaShieldAlt, FaBell, FaCog, FaSave } from 'react-icons/fa';
+import { useUser } from '@clerk/clerk-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FaUser, FaShieldAlt, FaCog } from 'react-icons/fa';
+import { toast } from 'react-toastify';
 
-const SettingsContainer = styled.div`
-  padding: 20px;
-  max-width: 800px;
+const Container = styled.div`
+  max-width: 900px;
   margin: 0 auto;
+  padding-bottom: 40px;
 `;
 
-const PageHeader = styled.div`
-  margin-bottom: 30px;
-  
+const Header = styled(motion.div)`
+  margin-bottom: 40px;
   h1 {
-    font-size: 28px;
-    font-weight: bold;
-    color: #2c3e50;
+    font-size: 2.5rem;
+    font-weight: 800;
     margin-bottom: 8px;
-  }
-  
-  p {
-    color: #7f8c8d;
-    font-size: 16px;
+    background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
   }
 `;
 
-const SettingsSection = styled.div`
-  background: white;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-  margin-bottom: 20px;
+const Section = styled(motion.div)`
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  padding: 32px;
+  margin-bottom: 24px;
   
-  .section-header {
+  .section-title {
     display: flex;
     align-items: center;
     gap: 12px;
-    margin-bottom: 20px;
+    margin-bottom: 24px;
+    color: white;
+    font-size: 1.25rem;
+    font-weight: 600;
     
-    .section-icon {
-      width: 40px;
-      height: 40px;
-      border-radius: 8px;
-      background: #3498db20;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #3498db;
-      font-size: 18px;
-    }
-    
-    .section-title {
-      font-size: 18px;
-      font-weight: 600;
-      color: #2c3e50;
-    }
+    svg { color: var(--primary); }
   }
 `;
 
-const FormGroup = styled.div`
+const InputGroup = styled.div`
   margin-bottom: 20px;
   
   label {
     display: block;
-    font-weight: 500;
-    color: #333;
+    color: var(--text-secondary);
     margin-bottom: 8px;
+    font-size: 0.9rem;
   }
   
-  input, select, textarea {
+  input, select {
     width: 100%;
-    padding: 12px;
-    border: 2px solid #e1e5e9;
-    border-radius: 8px;
-    font-size: 14px;
-    transition: border-color 0.3s ease;
+    padding: 12px 16px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    color: white;
+    font-size: 1rem;
+    transition: all 0.2s;
     
     &:focus {
       outline: none;
-      border-color: #3498db;
-    }
-  }
-  
-  textarea {
-    resize: vertical;
-    min-height: 100px;
-  }
-`;
-
-const CheckboxGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  
-  .checkbox-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    
-    input[type="checkbox"] {
-      width: 18px;
-      height: 18px;
-      accent-color: #3498db;
-    }
-    
-    label {
-      font-size: 14px;
-      color: #333;
-      cursor: pointer;
-      margin: 0;
+      border-color: var(--primary);
+      background: rgba(0, 0, 0, 0.3);
     }
   }
 `;
 
-const SaveButton = styled.button`
-  background: #3498db;
-  color: white;
-  border: none;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-weight: 500;
-  cursor: pointer;
+const ToggleRow = styled.div`
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  transition: background-color 0.2s ease;
+  padding: 16px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   
-  &:hover {
-    background: #2980b9;
+  &:last-child { border-bottom: none; }
+  
+  .info {
+    h4 { color: white; margin-bottom: 4px; font-weight: 500; }
+    p { color: var(--text-secondary); font-size: 0.85rem; }
+  }
+`;
+
+const Switch = styled.label`
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 28px;
+  
+  input { opacity: 0; width: 0; height: 0; }
+  
+  span {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: rgba(255, 255, 255, 0.1);
+    transition: .4s;
+    border-radius: 34px;
+    
+    &:before {
+      position: absolute;
+      content: "";
+      height: 20px;
+      width: 20px;
+      left: 4px;
+      bottom: 4px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+  }
+  
+  input:checked + span { background-color: var(--primary); }
+  input:checked + span:before { transform: translateX(22px); }
+`;
+
+const SaveBar = styled(motion.div)`
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.9);
+  backdrop-filter: blur(10px);
+  padding: 12px 24px;
+  border-radius: 50px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  gap: 16px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  z-index: 100;
+  
+  button {
+    padding: 10px 24px;
+    border-radius: 20px;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    
+    &.save { background: var(--primary); color: white; }
+    &.cancel { background: transparent; color: var(--text-secondary); }
   }
 `;
 
 const Settings = () => {
-  const { currentUser } = useAuth();
-  const [settings, setSettings] = useState({
-    name: currentUser?.name || '',
-    email: currentUser?.email || '',
-    department: currentUser?.department || '',
-    notifications: {
-      email: true,
-      push: false,
-      sms: false
-    },
-    security: {
-      twoFactor: false,
-      sessionTimeout: 30,
-      requirePin: true
-    },
-    preferences: {
-      defaultPrinter: '',
-      defaultCopies: 1,
-      defaultColor: false,
-      defaultDuplex: true
-    }
+  const { user } = useUser();
+  const [hasChanges, setHasChanges] = useState(false);
+  const [form, setForm] = useState({
+    name: user?.fullName || '',
+    email: user?.primaryEmailAddress?.emailAddress || '',
+    notifications: true,
+    darkMode: true,
+    twoFactor: false
   });
 
+  const handleChange = (field, val) => {
+    setForm(prev => ({ ...prev, [field]: val }));
+    setHasChanges(true);
+  };
+
   const handleSave = () => {
-    // In a real app, this would save to the backend
-    console.log('Settings saved:', settings);
+    toast.success('Settings saved successfully');
+    setHasChanges(false);
   };
 
   return (
-    <SettingsContainer>
-      <PageHeader>
-        <h1>Settings</h1>
-        <p>Manage your account preferences and system settings</p>
-      </PageHeader>
+    <Container>
+      <Header initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
+        <h1>System Settings</h1>
+      </Header>
 
-      <SettingsSection>
-        <div className="section-header">
-          <FaUser className="section-icon" />
-          <div className="section-title">Profile Information</div>
-        </div>
-        
-        <FormGroup>
-          <label>Full Name</label>
-          <input
-            type="text"
-            value={settings.name}
-            onChange={(e) => setSettings(prev => ({ ...prev, name: e.target.value }))}
-          />
-        </FormGroup>
-        
-        <FormGroup>
+      <Section initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+        <div className="section-title"><FaUser /> Profile Settings</div>
+        <InputGroup>
+          <label>Display Name</label>
+          <input value={form.name} onChange={e => handleChange('name', e.target.value)} />
+        </InputGroup>
+        <InputGroup>
           <label>Email Address</label>
-          <input
-            type="email"
-            value={settings.email}
-            onChange={(e) => setSettings(prev => ({ ...prev, email: e.target.value }))}
-          />
-        </FormGroup>
-        
-        <FormGroup>
-          <label>Department</label>
-          <select
-            value={settings.department}
-            onChange={(e) => setSettings(prev => ({ ...prev, department: e.target.value }))}
-          >
-            <option value="">Select Department</option>
-            <option value="IT">IT</option>
-            <option value="Sales">Sales</option>
-            <option value="Marketing">Marketing</option>
-            <option value="HR">HR</option>
-            <option value="Finance">Finance</option>
-          </select>
-        </FormGroup>
-      </SettingsSection>
+          <input value={form.email} onChange={e => handleChange('email', e.target.value)} />
+        </InputGroup>
+      </Section>
 
-      <SettingsSection>
-        <div className="section-header">
-          <FaBell className="section-icon" />
-          <div className="section-title">Notifications</div>
-        </div>
-        
-        <CheckboxGroup>
-          <div className="checkbox-item">
-            <input
-              type="checkbox"
-              id="email-notifications"
-              checked={settings.notifications.email}
-              onChange={(e) => setSettings(prev => ({
-                ...prev,
-                notifications: { ...prev.notifications, email: e.target.checked }
-              }))}
-            />
-            <label htmlFor="email-notifications">Email notifications for print job status</label>
-          </div>
-          
-          <div className="checkbox-item">
-            <input
-              type="checkbox"
-              id="push-notifications"
-              checked={settings.notifications.push}
-              onChange={(e) => setSettings(prev => ({
-                ...prev,
-                notifications: { ...prev.notifications, push: e.target.checked }
-              }))}
-            />
-            <label htmlFor="push-notifications">Push notifications (mobile app)</label>
-          </div>
-          
-          <div className="checkbox-item">
-            <input
-              type="checkbox"
-              id="sms-notifications"
-              checked={settings.notifications.sms}
-              onChange={(e) => setSettings(prev => ({
-                ...prev,
-                notifications: { ...prev.notifications, sms: e.target.checked }
-              }))}
-            />
-            <label htmlFor="sms-notifications">SMS notifications for urgent jobs</label>
-          </div>
-        </CheckboxGroup>
-      </SettingsSection>
+      <Section initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+        <div className="section-title"><FaCog /> Preferences</div>
 
-      <SettingsSection>
-        <div className="section-header">
-          <FaShieldAlt className="section-icon" />
-          <div className="section-title">Security Settings</div>
-        </div>
-        
-        <CheckboxGroup>
-          <div className="checkbox-item">
+        <ToggleRow>
+          <div className="info">
+            <h4>Dark Mode</h4>
+            <p>Use high-contrast dark theme</p>
+          </div>
+          <Switch>
             <input
               type="checkbox"
-              id="two-factor"
-              checked={settings.security.twoFactor}
-              onChange={(e) => setSettings(prev => ({
-                ...prev,
-                security: { ...prev.security, twoFactor: e.target.checked }
-              }))}
+              checked={form.darkMode}
+              onChange={e => handleChange('darkMode', e.target.checked)}
             />
-            <label htmlFor="two-factor">Enable two-factor authentication</label>
-          </div>
-          
-          <div className="checkbox-item">
-            <input
-              type="checkbox"
-              id="require-pin"
-              checked={settings.security.requirePin}
-              onChange={(e) => setSettings(prev => ({
-                ...prev,
-                security: { ...prev.security, requirePin: e.target.checked }
-              }))}
-            />
-            <label htmlFor="require-pin">Require PIN for print release</label>
-          </div>
-        </CheckboxGroup>
-        
-        <FormGroup>
-          <label>Session Timeout (minutes)</label>
-          <select
-            value={settings.security.sessionTimeout}
-            onChange={(e) => setSettings(prev => ({
-              ...prev,
-              security: { ...prev.security, sessionTimeout: parseInt(e.target.value) }
-            }))}
-          >
-            <option value={15}>15 minutes</option>
-            <option value={30}>30 minutes</option>
-            <option value={60}>1 hour</option>
-            <option value={120}>2 hours</option>
-          </select>
-        </FormGroup>
-      </SettingsSection>
+            <span />
+          </Switch>
+        </ToggleRow>
 
-      <SettingsSection>
-        <div className="section-header">
-          <FaCog className="section-icon" />
-          <div className="section-title">Print Preferences</div>
-        </div>
-        
-        <FormGroup>
-          <label>Default Printer</label>
-          <select
-            value={settings.preferences.defaultPrinter}
-            onChange={(e) => setSettings(prev => ({
-              ...prev,
-              preferences: { ...prev.preferences, defaultPrinter: e.target.value }
-            }))}
-          >
-            <option value="">Select Default Printer</option>
-            <option value="main-office">Main Office Printer</option>
-            <option value="sales-dept">Sales Department Printer</option>
-            <option value="marketing">Marketing Printer</option>
-          </select>
-        </FormGroup>
-        
-        <FormGroup>
-          <label>Default Number of Copies</label>
-          <input
-            type="number"
-            min="1"
-            max="100"
-            value={settings.preferences.defaultCopies}
-            onChange={(e) => setSettings(prev => ({
-              ...prev,
-              preferences: { ...prev.preferences, defaultCopies: parseInt(e.target.value) }
-            }))}
-          />
-        </FormGroup>
-        
-        <CheckboxGroup>
-          <div className="checkbox-item">
+        <ToggleRow>
+          <div className="info">
+            <h4>Email Notifications</h4>
+            <p>Receive updates about print jobs</p>
+          </div>
+          <Switch>
             <input
               type="checkbox"
-              id="default-color"
-              checked={settings.preferences.defaultColor}
-              onChange={(e) => setSettings(prev => ({
-                ...prev,
-                preferences: { ...prev.preferences, defaultColor: e.target.checked }
-              }))}
+              checked={form.notifications}
+              onChange={e => handleChange('notifications', e.target.checked)}
             />
-            <label htmlFor="default-color">Default to color printing</label>
-          </div>
-          
-          <div className="checkbox-item">
-            <input
-              type="checkbox"
-              id="default-duplex"
-              checked={settings.preferences.defaultDuplex}
-              onChange={(e) => setSettings(prev => ({
-                ...prev,
-                preferences: { ...prev.preferences, defaultDuplex: e.target.checked }
-              }))}
-            />
-            <label htmlFor="default-duplex">Default to double-sided printing</label>
-          </div>
-        </CheckboxGroup>
-      </SettingsSection>
+            <span />
+          </Switch>
+        </ToggleRow>
+      </Section>
 
-      <SaveButton onClick={handleSave}>
-        <FaSave />
-        Save Settings
-      </SaveButton>
-    </SettingsContainer>
+      <Section initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+        <div className="section-title"><FaShieldAlt /> Security</div>
+
+        <ToggleRow>
+          <div className="info">
+            <h4>Two-Factor Authentication</h4>
+            <p>Require code verification on login</p>
+          </div>
+          <Switch>
+            <input
+              type="checkbox"
+              checked={form.twoFactor}
+              onChange={e => handleChange('twoFactor', e.target.checked)}
+            />
+            <span />
+          </Switch>
+        </ToggleRow>
+      </Section>
+
+      <AnimatePresence>
+        {hasChanges && (
+          <SaveBar initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }}>
+            <button className="cancel" onClick={() => setHasChanges(false)}>Reset</button>
+            <button className="save" onClick={handleSave}>Save Changes</button>
+          </SaveBar>
+        )}
+      </AnimatePresence>
+
+    </Container>
   );
 };
 
