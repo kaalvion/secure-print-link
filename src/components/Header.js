@@ -303,7 +303,12 @@ const Header = ({ onMenuToggle }) => {
         <UserSection>
           <UserInfo>
             <div className="user-name">{user?.fullName || user?.username}</div>
-            <div className="user-role">{user?.publicMetadata?.role || 'User'}</div>
+            <div className="user-role">
+              {user?.unsafeMetadata?.role === 'printer' && '🖨️ Print Shop'}
+              {user?.unsafeMetadata?.role === 'user' && '👤 User'}
+              {user?.unsafeMetadata?.role === 'admin' && '⚡ Admin'}
+              {!user?.unsafeMetadata?.role && '👤 User'}
+            </div>
           </UserInfo>
 
           <UserAvatar onClick={() => setShowDropdown(!showDropdown)}>
